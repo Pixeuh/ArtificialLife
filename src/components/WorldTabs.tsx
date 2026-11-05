@@ -1,0 +1,11 @@
+import type { WorldSnapshot } from '../core/types'
+
+export function WorldTabs({ worlds, selectedId, onSelect }: { worlds: WorldSnapshot[]; selectedId: string; onSelect: (id: string) => void }) {
+  return <nav className="world-tabs" aria-label="Sélection du monde">
+    {worlds.map((world, index) => <button key={world.id} className={`world-tab ${selectedId === world.id ? 'selected' : ''}`} onClick={() => onSelect(world.id)} aria-current={selectedId === world.id ? 'page' : undefined}>
+      <span className={`tab-indicator ${selectedId === world.id ? 'on' : ''}`} />
+      <span className="tab-name">{world.name}</span>
+      <span className="tab-mode">{index === 0 ? 'NATUREL' : 'DIVIN'}</span>
+    </button>)}
+  </nav>
+}
