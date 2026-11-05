@@ -15,6 +15,9 @@ export class OrganismFactory {
         config.organismSpeed,
         radius,
         config.initialEnergy,
+        config.maxEnergy,
+        config.baseMetabolismRate,
+        config.movementEnergyCost,
       )
     }
     return organisms

@@ -5,7 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#080c10" />
     <meta name="description" content="Laboratoire de simulation de mondes artificiels." />
-    <title>Artificial Life — Lab 0.2</title>
+    <script>
+      let savedTheme = null;
+      let systemPrefersLight = false;
+      try { savedTheme = localStorage.getItem('artificial-life-theme'); } catch {}
+      try { systemPrefersLight = window.matchMedia('(prefers-color-scheme: light)').matches; } catch {}
+      document.documentElement.dataset.theme = savedTheme === 'light' || savedTheme === 'dark' ? savedTheme : systemPrefersLight ? 'light' : 'dark';
+    </script>
+    <title>Artificial Life — Lab 0.3</title>
   </head>
   <body>
     <div id="root"></div>

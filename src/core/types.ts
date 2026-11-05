@@ -10,6 +10,8 @@ export interface WorldConfig {
   readonly organismRadius: number
   readonly initialEnergy: number
   readonly maxEnergy: number
+  readonly baseMetabolismRate: number
+  readonly movementEnergyCost: number
   readonly turnRate: number
 }
 
@@ -22,6 +24,9 @@ export interface OrganismSnapshot {
   readonly radius: number
   readonly age: number
   readonly energy: number
+  readonly maxEnergy: number
+  readonly baseMetabolismRate: number
+  readonly movementEnergyCost: number
   readonly active: boolean
   readonly foodConsumed: number
 }
@@ -40,6 +45,9 @@ export interface WorldStatistics {
   readonly totalFoodConsumed: number
   readonly averageEnergy: number
   readonly averageAge: number
+  readonly initialPopulation: number
+  readonly totalDeaths: number
+  readonly starvationDeaths: number
 }
 
 export interface WorldDefinition {
@@ -80,5 +88,7 @@ export const WORLD_DEFAULTS: WorldConfig = {
   organismRadius: 7,
   initialEnergy: 60,
   maxEnergy: 100,
+  baseMetabolismRate: 0.08,
+  movementEnergyCost: 0.0005,
   turnRate: 0.65,
 }

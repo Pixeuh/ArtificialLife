@@ -6,6 +6,7 @@ import type { Organism } from '../organisms/Organism'
 export class MovementSystem {
   static update(organisms: Organism[], width: number, height: number, config: WorldConfig, random: SeededRandom, deltaTime: number): void {
     for (const organism of organisms) {
+      if (!organism.active) continue
       organism.age += deltaTime
       organism.direction += (random.next() * 2 - 1) * config.turnRate * deltaTime
       organism.x += Math.cos(organism.direction) * organism.speed * deltaTime

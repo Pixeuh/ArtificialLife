@@ -1,19 +1,27 @@
 import { useEffect, useRef } from 'react'
 import type { WorldSnapshot } from '../core/types'
 import { Camera, WORLD_SCALE } from '../rendering/Camera'
-import { WorldRenderer } from '../rendering/WorldRenderer'
+import { WorldRenderer, type CanvasPalette } from '../rendering/WorldRenderer'
+import type { Theme } from '../theme/theme'
 
-interface Props { world: WorldSnapshot; selectedOrganismId: string | null; onSelectOrganism: (id: string | null) => void; onResetCamera: () => void }
+interface Props { world: WorldSnapshot; theme: Theme; selectedOrganismId: string | null; onSelectOrganism: (id: string | null) => void; onResetCamera: () => void }
 
-export function WorldCanvas({ world, selectedOrganismId, onSelectOrganism, onResetCamera }: Props) {
+export function WorldCanvas({ world, theme, selectedOrganismId, onSelectOrganism, onResetCamera }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const cameraRef = useRef(new Camera())
   const rendererRef = useRef(new WorldRenderer())
   const worldRef = useRef(world)
   const selectedRef = useRef(selectedOrganismId)
+  const paletteRef = useRef<CanvasPalette>(WorldRenderer.defaultPalette)
 
   useEffect(() => { worldRef.current = world }, [world])
   useEffect(() => { selectedRef.current = selectedOrganismId }, [selectedOrganismId])
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const styles = getComputedStyle(canvas)
+    paletteRef.current = WorldRenderer.readPalette(name => styles.getPropertyValue(name).trim())
+  }, [theme])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -34,7 +42,7 @@ export function WorldCanvas({ world, selectedOrganismId, onSelectOrganism, onRes
     resize()
     const draw = (): void => {
       const bounds = canvas.getBoundingClientRect()
-      rendererRef.current.draw(context, bounds.width, bounds.height, worldRef.current, cameraRef.current, selectedRef.current)
+      rendererRef.current.draw(context, bounds.width, bounds.height, worldRef.current, cameraRef.current, selectedRef.current, paletteRef.current)
       frame = requestAnimationFrame(draw)
     }
     frame = requestAnimationFrame(draw)

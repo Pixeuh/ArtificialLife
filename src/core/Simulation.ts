@@ -3,6 +3,8 @@ import { SimulationClock } from './SimulationClock'
 import { World } from './World'
 import { FeedingSystem } from '../systems/FeedingSystem'
 import { MovementSystem } from '../systems/MovementSystem'
+import { MetabolismSystem } from '../systems/MetabolismSystem'
+import { LifecycleSystem } from '../systems/LifecycleSystem'
 import { OrganismFactory } from '../organisms/OrganismFactory'
 import { ResourceManager } from '../environment/ResourceManager'
 import type { WorldDefinition } from './types'
@@ -24,9 +26,13 @@ export class Simulation {
 
   step(): void {
     const deltaTime = this.world.config.tickDuration
-    // Stable tick order: move/age, resolve feeding, regenerate, then advance clock.
+    // Stable tick order: remove prior nonviable organisms; move/age; feed; charge
+    // metabolism; remove newly dead organisms; regenerate resources; advance clock.
+    LifecycleSystem.removeDead(this.world)
     MovementSystem.update(this.world.organisms, this.world.width, this.world.height, this.world.config, this.random, deltaTime)
-    FeedingSystem.update(this.world.organisms, this.world.resources, this.world.config)
+    this.world.totalFoodConsumed += FeedingSystem.update(this.world.organisms, this.world.resources, this.world.config)
+    MetabolismSystem.update(this.world.organisms, deltaTime)
+    LifecycleSystem.removeDead(this.world)
     this.resourceManager.regenerate(deltaTime)
     this.world.step()
   }

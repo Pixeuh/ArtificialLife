@@ -15,6 +15,10 @@ export class World {
   tick = 0
   paused = true
   speed = 1
+  readonly initialPopulation: number
+  totalDeaths = 0
+  starvationDeaths = 0
+  totalFoodConsumed = 0
 
   constructor(definition: WorldDefinition) {
     this.id = definition.id
@@ -23,6 +27,7 @@ export class World {
     this.height = definition.height
     this.seed = definition.seed >>> 0
     this.config = normalizeConfig(definition.config)
+    this.initialPopulation = this.config.initialOrganismCount
   }
 
   step(): void {
@@ -41,18 +46,19 @@ export class World {
     const population = this.organisms.length
     let energyTotal = 0
     let ageTotal = 0
-    let totalFoodConsumed = 0
     for (const organism of this.organisms) {
       energyTotal += organism.energy
       ageTotal += organism.age
-      totalFoodConsumed += organism.foodConsumed
     }
     const statistics: WorldStatistics = {
       population,
       resources: this.resources.length,
-      totalFoodConsumed,
+      totalFoodConsumed: this.totalFoodConsumed,
       averageEnergy: population === 0 ? 0 : energyTotal / population,
       averageAge: population === 0 ? 0 : ageTotal / population,
+      initialPopulation: this.initialPopulation,
+      totalDeaths: this.totalDeaths,
+      starvationDeaths: this.starvationDeaths,
     }
     return {
       id: this.id,
@@ -74,6 +80,7 @@ export class World {
 
 function normalizeConfig(config: Partial<WorldConfig> = {}): WorldConfig {
   const merged = { ...WORLD_DEFAULTS, ...config }
+  const maxEnergy = nonNegative(merged.maxEnergy)
   return {
     tickDuration: positive(merged.tickDuration, WORLD_DEFAULTS.tickDuration),
     initialOrganismCount: integer(merged.initialOrganismCount, 0, 2_000),
@@ -84,8 +91,11 @@ function normalizeConfig(config: Partial<WorldConfig> = {}): WorldConfig {
     foodRadius: positive(merged.foodRadius, WORLD_DEFAULTS.foodRadius),
     organismSpeed: nonNegative(merged.organismSpeed),
     organismRadius: positive(merged.organismRadius, WORLD_DEFAULTS.organismRadius),
-    initialEnergy: nonNegative(merged.initialEnergy),
-    maxEnergy: nonNegative(merged.maxEnergy),
+    // Initial energy above capacity is capped; energy is never created later to compensate.
+    initialEnergy: Math.min(maxEnergy, nonNegative(merged.initialEnergy)),
+    maxEnergy,
+    baseMetabolismRate: nonNegative(merged.baseMetabolismRate),
+    movementEnergyCost: nonNegative(merged.movementEnergyCost),
     turnRate: nonNegative(merged.turnRate),
   }
 }
