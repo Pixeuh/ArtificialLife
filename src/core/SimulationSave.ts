@@ -13,6 +13,7 @@ export interface SimulationSaveV1 {
     readonly simulatedTime: number
     readonly paused: boolean
     readonly speed: number
+    readonly initialPopulation?: number
     readonly organisms: readonly SavedOrganism[]
     readonly resources: readonly FoodSnapshot[]
     readonly links: readonly CellLinkSnapshot[]
@@ -25,6 +26,14 @@ export interface SimulationSaveV1 {
     readonly nextOrganismNumber: number
   }
 }
+
+/** V2 adds an independent resource PRNG stream; terrain is regenerated from its seed/config. */
+export interface SimulationSaveV2 extends Omit<SimulationSaveV1, 'version'> {
+  readonly version: 2
+  readonly resourceRandomState: number
+}
+
+export type SimulationSave = SimulationSaveV1 | SimulationSaveV2
 
 export interface SavedOrganism {
   readonly id: string

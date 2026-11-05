@@ -1,13 +1,14 @@
 import type { Organism } from '../organisms/Organism'
 import { cellBoundaryExtents, supportRadius } from '../organisms/CellGeometry'
 import { SpatialHashGrid } from './SpatialHashGrid'
+import type { TerrainMap } from '../environment/terrain/TerrainMap'
 
 export interface CollisionResolution { readonly candidatePairs: number; readonly resolvedPairs: number }
 interface Pair { readonly first: number; readonly second: number }
 
 /** Resolves oriented-ellipse contacts with a uniform spatial hash and three relaxed passes. */
 export class CellPhysicsSystem {
-  static resolve(organisms: readonly Organism[], width: number, height: number, passes = 2): CollisionResolution {
+  static resolve(organisms: readonly Organism[], width: number, height: number, passes = 2, terrain?: TerrainMap): CollisionResolution {
     if (organisms.length < 2) return { candidatePairs: 0, resolvedPairs: 0 }
     let candidatePairs = 0
     let resolvedPairs = 0
@@ -39,6 +40,8 @@ export class CellPhysicsSystem {
         b.y += ny * correction
         clampToWorld(a, width, height)
         clampToWorld(b, width, height)
+        terrain?.constrainOrganism(a)
+        terrain?.constrainOrganism(b)
       }
     }
     return { candidatePairs, resolvedPairs }

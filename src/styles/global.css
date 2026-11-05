@@ -54,3 +54,16 @@ body{height:100%;min-height:0;overflow:hidden}
   .inspector{min-height:0;padding-right:0;overflow:visible;scrollbar-gutter:auto}
   .app-footer{flex:0 0 43px}
 }
+:root{--terrain-plains:#536c48;--terrain-forest:#294d37;--terrain-desert:#8c7950;--terrain-mountain:#68716e;--terrain-water:#26566c}
+[data-theme="light"]{--terrain-plains:#a6bd7d;--terrain-forest:#5c956c;--terrain-desert:#d0b576;--terrain-mountain:#9da8a4;--terrain-water:#71afc2}
+.terrain-legend{position:absolute;left:14px;bottom:13px;display:flex;gap:11px;flex-wrap:wrap;max-width:calc(100% - 28px);padding:8px 10px;border:1px solid var(--line-strong);border-radius:3px;background:color-mix(in srgb,var(--panel-raised) 90%,transparent);color:var(--text-secondary);font:9px var(--mono);pointer-events:none;backdrop-filter:blur(5px)}
+.terrain-legend span{display:flex;align-items:center;gap:5px;white-space:nowrap}
+.biome-swatch{width:8px;height:8px;border-radius:50%;background:var(--terrain-plains)}
+.biome-swatch.forest{background:var(--terrain-forest)}.biome-swatch.desert{background:var(--terrain-desert)}.biome-swatch.mountain{background:var(--terrain-mountain)}.biome-swatch.water{background:var(--terrain-water)}
+.terrain-readout{display:flex;flex-direction:column;gap:6px;margin:0 0 17px;padding:10px;border:1px solid var(--line);background:var(--panel);color:var(--text-muted);font-size:9px;line-height:1.5}
+.terrain-readout strong{color:var(--text);font-size:11px;font-weight:500}.terrain-readout .section-kicker{font-size:8px}
+.terrain-settings{margin:16px 0 0;padding:12px 10px 10px;border:1px solid var(--line-strong);min-width:0}
+.terrain-settings legend{padding:0 5px}.terrain-settings label{margin-top:9px}
+.terrain-settings .seed-setting input{width:120px}.terrain-settings .seed-setting button{height:27px;width:27px;border:1px solid var(--input-border);border-radius:3px;background:var(--bg);color:var(--accent);font-size:16px}
+.terrain-settings .terrain-seed-toggle input{width:15px;accent-color:var(--accent)}
+@media(max-width:680px){.terrain-legend{left:8px;bottom:8px;gap:7px;padding:7px;font-size:8px}.terrain-legend span{gap:4px}.terrain-readout{margin-bottom:14px}}

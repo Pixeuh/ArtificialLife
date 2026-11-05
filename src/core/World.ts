@@ -2,6 +2,7 @@ import { WORLD_DEFAULTS, type CellLinkSnapshot, type EvolutionSample, type FoodS
 import type { FoodResource } from '../environment/FoodResource'
 import type { Organism } from '../organisms/Organism'
 import { getColonyMembership } from '../organisms/CellColony'
+import { TerrainMap } from '../environment/terrain/TerrainMap'
 
 export class World {
   readonly id: string
@@ -12,6 +13,7 @@ export class World {
   readonly originType: 'primordial' | 'custom'
   readonly interventionMode: 'observation' | 'divine'
   readonly config: WorldConfig
+  readonly terrain: TerrainMap
   organisms: Organism[] = []
   resources: FoodResource[] = []
   links: CellLinkSnapshot[] = []
@@ -21,7 +23,7 @@ export class World {
   tick = 0
   paused = true
   speed = 1
-  readonly initialPopulation: number
+  initialPopulation: number
   totalDeaths = 0
   starvationDeaths = 0
   totalFoodConsumed = 0
@@ -37,6 +39,7 @@ export class World {
     this.originType = definition.originType ?? 'primordial'
     this.interventionMode = definition.interventionMode ?? 'observation'
     this.config = normalizeConfig(definition.config)
+    this.terrain = new TerrainMap(definition.width, definition.height, this.seed, definition.terrainConfig)
     this.initialPopulation = this.config.initialOrganismCount
     this.nextOrganismNumber = this.initialPopulation
   }
@@ -64,6 +67,7 @@ export class World {
       originType: this.originType,
       interventionMode: this.interventionMode,
       config: this.config,
+      terrainConfig: this.terrain.config,
       simulatedTime: this.simulatedTime,
       tick: this.tick,
       paused: this.paused,

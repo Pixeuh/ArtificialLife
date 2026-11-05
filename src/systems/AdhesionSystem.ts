@@ -1,9 +1,10 @@
 import type { World } from '../core/World'
 import { cellBoundaryExtents, supportRadius } from '../organisms/CellGeometry'
+import type { TerrainMap } from '../environment/terrain/TerrainMap'
 
 /** Enforces distance constraints after movement and removes overstretched bonds. */
 export class AdhesionSystem {
-  static constrain(world: World): number {
+  static constrain(world: World, terrain?: TerrainMap): number {
     const cells = new Map(world.organisms.map(cell => [cell.id, cell]))
     let write = 0
     let broken = 0
@@ -37,6 +38,9 @@ export class AdhesionSystem {
       a.y = clampToWorld(a.y + correctionY, extentA.y, world.height)
       b.x = clampToWorld(b.x - correctionX, extentB.x, world.width)
       b.y = clampToWorld(b.y - correctionY, extentB.y, world.height)
+      terrain?.constrainOrganism(a)
+      terrain?.constrainOrganism(b)
+      if (Math.hypot(b.x - a.x, b.y - a.y) > breakDistance) { broken += 1; continue }
       world.links[write++] = link
     }
     world.links.length = write

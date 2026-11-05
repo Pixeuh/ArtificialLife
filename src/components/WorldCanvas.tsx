@@ -3,24 +3,30 @@ import type { WorldSnapshot } from '../core/types'
 import { Camera, WORLD_SCALE } from '../rendering/Camera'
 import { WorldRenderer, type CanvasPalette } from '../rendering/WorldRenderer'
 import type { Theme } from '../theme/theme'
+import type { TerrainCell, TerrainSnapshot } from '../environment/terrain/terrainTypes'
 
-interface Props { world: WorldSnapshot; theme: Theme; selectedOrganismId: string | null; onSelectOrganism: (id: string | null) => void; onResetCamera: () => void }
+interface Props { world: WorldSnapshot; theme: Theme; terrain?: TerrainSnapshot; selectedOrganismId: string | null; onSelectOrganism: (id: string | null) => void; onResetCamera: () => void; onHoverTerrain?: (cell: TerrainCell | null) => void }
 
-export function WorldCanvas({ world, theme, selectedOrganismId, onSelectOrganism, onResetCamera }: Props) {
+export function WorldCanvas({ world, theme, terrain, selectedOrganismId, onSelectOrganism, onResetCamera, onHoverTerrain }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const cameraRef = useRef(new Camera())
   const rendererRef = useRef(new WorldRenderer())
   const worldRef = useRef(world)
   const selectedRef = useRef(selectedOrganismId)
   const paletteRef = useRef<CanvasPalette>(WorldRenderer.defaultPalette)
+  const terrainRef = useRef(terrain)
+  const hoverRef = useRef(onHoverTerrain)
 
   useEffect(() => { worldRef.current = world }, [world])
   useEffect(() => { selectedRef.current = selectedOrganismId }, [selectedOrganismId])
+  useEffect(() => { terrainRef.current = terrain; rendererRef.current.setTerrain(terrain, paletteRef.current) }, [terrain])
+  useEffect(() => { hoverRef.current = onHoverTerrain }, [onHoverTerrain])
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
     const styles = getComputedStyle(canvas)
     paletteRef.current = WorldRenderer.readPalette(name => styles.getPropertyValue(name).trim())
+    rendererRef.current.setTerrain(terrainRef.current, paletteRef.current)
   }, [theme])
 
   useEffect(() => {
@@ -60,13 +66,21 @@ export function WorldCanvas({ world, theme, selectedOrganismId, onSelectOrganism
       dragRef.current = { x: event.clientX, y: event.clientY, moved: false }
     }}
     onPointerMove={(event) => {
-      if (!dragRef.current) return
-      const dx = event.clientX - dragRef.current.x
-      const dy = event.clientY - dragRef.current.y
-      if (Math.abs(dx) + Math.abs(dy) > 2) dragRef.current.moved = true
-      cameraRef.current.pan(dx, dy)
-      dragRef.current.x = event.clientX
-      dragRef.current.y = event.clientY
+      if (dragRef.current) {
+        const dx = event.clientX - dragRef.current.x
+        const dy = event.clientY - dragRef.current.y
+        if (Math.abs(dx) + Math.abs(dy) > 2) dragRef.current.moved = true
+        cameraRef.current.pan(dx, dy)
+        dragRef.current.x = event.clientX
+        dragRef.current.y = event.clientY
+        return
+      }
+      const bounds = event.currentTarget.getBoundingClientRect()
+      const point = cameraRef.current.screenToWorld({ x: event.clientX - bounds.left, y: event.clientY - bounds.top }, { x: bounds.width, y: bounds.height })
+      const column = Math.floor(point.x / (terrainRef.current?.config.cellSize ?? 1))
+      const row = Math.floor(point.y / (terrainRef.current?.config.cellSize ?? 1))
+      const map = terrainRef.current
+      hoverRef.current?.(map && point.x >= 0 && point.y >= 0 && point.x < map.width && point.y < map.height && column >= 0 && row >= 0 && column < map.columns && row < map.rows ? map.cells[row * map.columns + column] : null)
     }}
     onPointerUp={(event) => {
       const drag = dragRef.current
@@ -93,6 +107,7 @@ export function WorldCanvas({ world, theme, selectedOrganismId, onSelectOrganism
       onSelectOrganism(nearestId)
     }}
     onPointerCancel={() => { dragRef.current = null }}
+    onPointerLeave={() => hoverRef.current?.(null)}
     onWheel={(event) => {
       event.preventDefault()
       const bounds = event.currentTarget.getBoundingClientRect()

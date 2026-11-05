@@ -4,6 +4,7 @@ import { Simulation } from './Simulation'
 import { World } from './World'
 import { Camera, MAX_ZOOM, MIN_ZOOM } from '../rendering/Camera'
 import { generateNewSeed } from '../components/seedActions'
+import type { SimulationSaveV1 } from './SimulationSave'
 
 const definition = (id: string, seed = 1234) => ({ id, name: id, width: 1000, height: 800, seed })
 
@@ -93,6 +94,14 @@ describe('World and Simulation', () => {
     for (let tick = 0; tick < 60; tick += 1) { original.step(); restored.step() }
     expect(restored.world.snapshot()).toEqual(original.world.snapshot())
     expect(restored.save()).toEqual(original.save())
+  })
+
+  it('continues to read V1 saves after adding the independent terrain resource stream', () => {
+    const current = new Simulation({ ...definition('legacy-resume', 33), config: { initialOrganismCount: 8, initialFoodCount: 12 } })
+    current.step()
+    const legacySave = { ...current.save(), version: 1 } as SimulationSaveV1
+    const restored = Simulation.fromSave(legacySave)
+    expect(restored.world.snapshot()).toEqual(current.world.snapshot())
   })
 })
 

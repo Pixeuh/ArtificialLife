@@ -1,3 +1,5 @@
+import type { TerrainGenerationConfig } from '../environment/terrain/terrainTypes'
+
 export interface WorldConfig {
   readonly tickDuration: number
   readonly initialOrganismCount: number
@@ -108,6 +110,7 @@ export interface WorldDefinition {
   readonly originType?: 'primordial' | 'custom'
   readonly interventionMode?: 'observation' | 'divine'
   readonly config?: Partial<WorldConfig>
+  readonly terrainConfig?: Partial<TerrainGenerationConfig>
 }
 
 export interface WorldSnapshot extends WorldDefinition {
@@ -118,6 +121,7 @@ export interface WorldSnapshot extends WorldDefinition {
   readonly paused: boolean
   readonly speed: number
   readonly config: WorldConfig
+  readonly terrainConfig: TerrainGenerationConfig
   readonly organisms: readonly OrganismSnapshot[]
   readonly resources: readonly FoodSnapshot[]
   readonly links: readonly CellLinkSnapshot[]

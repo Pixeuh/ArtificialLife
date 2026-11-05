@@ -8,6 +8,10 @@ import { WorldCanvas } from './components/WorldCanvas'
 import { WorldInfo } from './components/WorldInfo'
 import { WorldTabs } from './components/WorldTabs'
 import { generateNewSeed } from './components/seedActions'
+import { TERRAIN_DEFAULTS } from './environment/terrain/terrainTypes'
+import type { TerrainCell, TerrainSnapshot } from './environment/terrain/terrainTypes'
+import { TerrainSettings, type TerrainDraft } from './components/TerrainSettings'
+import { TerrainLegend } from './components/TerrainLegend'
 
 const definitions: WorldDefinition[] = [
   { id: 'world-a', name: 'Monde A', width: 4_000, height: 2_500, seed: 381_047_21, originType: 'primordial', interventionMode: 'observation', config: { initialOrganismCount: 50, initialFoodCount: 250, maxFoodCount: 350 } },
@@ -16,15 +20,22 @@ const definitions: WorldDefinition[] = [
 
 type WorldSettings = { organisms: number; foods: number; foodEnergy: number; foodRegenerationRate: number; baseMetabolismRate: number; movementEnergyCost: number; divisionEnergyThreshold: number; mutationRate: number; mutationStep: number; adhesionEnergyCost: number; maximumPopulation: number }
 
+function makeTerrainDraft(definition: WorldDefinition): TerrainDraft {
+  return { ...TERRAIN_DEFAULTS, ...definition.terrainConfig, seed: definition.seed, customSeed: false }
+}
+
 export default function App() {
   const workers = useRef<Worker[]>([])
   const [worldDefinitions, setWorldDefinitions] = useState(definitions)
   const [readyWorlds, setReadyWorlds] = useState<Record<string, boolean>>({})
+  const [terrains, setTerrains] = useState<Record<string, TerrainSnapshot>>({})
+  const [hoveredTerrain, setHoveredTerrain] = useState<TerrainCell | null>(null)
   const [worlds, setWorlds] = useState<WorldSnapshot[]>(() => definitions.map(definition => ({
     ...definition,
     originType: definition.originType ?? 'primordial',
     interventionMode: definition.interventionMode ?? 'observation',
     config: { ...WORLD_DEFAULTS, ...definition.config },
+    terrainConfig: { ...TERRAIN_DEFAULTS, ...definition.terrainConfig },
     simulatedTime: 0,
     tick: 0,
     paused: true,
@@ -50,6 +61,7 @@ export default function App() {
     adhesionEnergyCost: definition.config?.adhesionEnergyCost ?? WORLD_DEFAULTS.adhesionEnergyCost,
     maximumPopulation: definition.config?.maximumPopulation ?? WORLD_DEFAULTS.maximumPopulation,
   }])))
+  const [terrainDrafts, setTerrainDrafts] = useState<Record<string, TerrainDraft>>(() => Object.fromEntries(definitions.map(definition => [definition.id, makeTerrainDraft(definition)])))
   const [showSettings, setShowSettings] = useState(false)
   const [cameraResetKey, setCameraResetKey] = useState(0)
   const [theme, setTheme] = useState<Theme>(getInitialTheme)
@@ -74,6 +86,7 @@ export default function App() {
           setReadyWorlds(current => ({ ...current, [message.world.id]: true }))
           setWorlds(current => current.map(world => world.id === message.world.id ? message.world : world))
         }
+        if (message.type === 'terrain') setTerrains(current => ({ ...current, [message.worldId]: message.terrain }))
         if (message.type === 'error') console.error(message.message)
       }
       worker.postMessage({ type: 'initialize', world: definitions[index] } satisfies WorkerCommand)
@@ -87,6 +100,7 @@ export default function App() {
   const selectWorld = (id: string): void => {
     setSelectedId(id)
     setSelectedOrganismId(null)
+    setHoveredTerrain(null)
   }
 
   const command = (type: 'start' | 'pause' | 'replay' | 'new-world' | 'set-speed', speed?: number): void => {
@@ -96,10 +110,12 @@ export default function App() {
     else if (type === 'replay') {
       message = { type: 'reset', world: worldDefinitions[index] }
       setSelectedOrganismId(null)
+      setHoveredTerrain(null)
       setDeathNotice(false)
     } else if (type === 'new-world') {
       const definition = worldDefinitions[index]
       const counts = draftCounts[selectedId]
+      const terrainDraft = terrainDrafts[selectedId]
       const config: Partial<WorldConfig> = {
         ...definition.config,
         initialOrganismCount: counts.organisms,
@@ -115,10 +131,14 @@ export default function App() {
         adhesionEnergyCost: counts.adhesionEnergyCost,
         maximumPopulation: counts.maximumPopulation,
       }
-      const updatedDefinition = { ...definition, seed: generateNewSeed(definition.seed), config }
+      const seed = terrainDraft.customSeed ? terrainDraft.seed >>> 0 : generateNewSeed(definition.seed)
+      const terrainConfig = { cellSize: definition.terrainConfig?.cellSize ?? TERRAIN_DEFAULTS.cellSize, relief: terrainDraft.relief, moisture: terrainDraft.moisture, waterCoverage: terrainDraft.waterCoverage }
+      const updatedDefinition = { ...definition, seed, config, terrainConfig }
       setWorldDefinitions(current => current.map((item, itemIndex) => itemIndex === index ? updatedDefinition : item))
+      setTerrainDrafts(current => ({ ...current, [selectedId]: { ...terrainDraft, seed, customSeed: false } }))
       message = { type: 'reset', world: updatedDefinition }
       setSelectedOrganismId(null)
+      setHoveredTerrain(null)
       setDeathNotice(false)
     } else message = { type }
     workers.current[index]?.postMessage(message)
@@ -133,6 +153,23 @@ export default function App() {
     setDraftCounts(current => ({ ...current, [selectedId]: { ...current[selectedId], [field]: bounded } }))
   }
 
+  const updateTerrainSetting = (field: keyof TerrainDraft, value: number | boolean): void => {
+    setTerrainDrafts(current => {
+      const draft = current[selectedId]
+      if (typeof value === 'boolean') return { ...current, [selectedId]: { ...draft, [field]: value } }
+      const bounded = field === 'seed' ? Math.max(0, Math.min(0xffff_ffff, Math.floor(Number.isFinite(value) ? value : 0)))
+        : field === 'waterCoverage' ? Math.max(0, Math.min(0.6, value))
+          : Math.max(0, Math.min(1, value))
+      return { ...current, [selectedId]: { ...draft, [field]: bounded } }
+    })
+  }
+
+  const randomizeTerrainSeed = (): void => {
+    const seed = generateNewSeed(terrainDrafts[selectedId].seed)
+    updateTerrainSetting('seed', seed)
+    updateTerrainSetting('customSeed', true)
+  }
+
   const toggleTheme = (): void => {
     const nextTheme: Theme = theme === 'dark' ? 'light' : 'dark'
     setTheme(nextTheme)
@@ -141,23 +178,23 @@ export default function App() {
 
   return <main className="app-shell">
     <header className="topbar">
-      <a className="brand" href="#" aria-label="Artificial Life accueil"><span className="brand-mark"><i /><i /><i /><i /></span><span>ARTIFICIAL<span className="brand-light"> LIFE</span></span><span className="version">0.5.1</span></a>
+      <a className="brand" href="#" aria-label="Artificial Life accueil"><span className="brand-mark"><i /><i /><i /><i /></span><span>ARTIFICIAL<span className="brand-light"> LIFE</span></span><span className="version">0.6</span></a>
       <div className="header-divider" />
       <WorldTabs worlds={worlds} selectedId={selectedId} onSelect={selectWorld} />
       <div className="header-right"><span className="system-label"><span className="live-dot" />SYSTÈME OPÉRATIONNEL</span><button className="theme-toggle" onClick={toggleTheme} title={theme === 'dark' ? 'Activer le thème clair' : 'Activer le thème sombre'} aria-label={theme === 'dark' ? 'Activer le thème clair' : 'Activer le thème sombre'} aria-pressed={theme === 'light'}>
         {theme === 'dark' ? <svg key={theme} viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42" /></svg> : <svg key={theme} viewBox="0 0 24 24" aria-hidden="true"><path d="M20.2 15.3A8.5 8.5 0 0 1 8.7 3.8 8.6 8.6 0 1 0 20.2 15.3Z" /></svg>}
       </button><button className={`settings-button ${showSettings ? 'selected' : ''}`} onClick={() => setShowSettings(value => !value)} aria-expanded={showSettings} aria-label="Afficher les paramètres"><span>☷</span><span>Paramètres</span></button></div>
     </header>
-    {showSettings && <div className="settings-popover"><div className="section-kicker">ÉCOSYSTÈME · {selected.name.toUpperCase()}</div><label>Population initiale<input type="number" min="0" max="2000" value={draftCounts[selectedId].organisms} onChange={event => updateWorldSetting('organisms', Number(event.target.value))} /></label><label>Population maximale<input type="number" min="0" max="10000" step="1" value={draftCounts[selectedId].maximumPopulation} onChange={event => updateWorldSetting('maximumPopulation', Number(event.target.value))} /></label><label>Ressources initiales<input type="number" min="0" max="2000" value={draftCounts[selectedId].foods} onChange={event => updateWorldSetting('foods', Number(event.target.value))} /></label><label>Énergie par ressource<input type="number" min="0" step="1" value={draftCounts[selectedId].foodEnergy} onChange={event => updateWorldSetting('foodEnergy', Number(event.target.value))} /></label><label>Régénération ressources/s<input type="number" min="0" step="0.1" value={draftCounts[selectedId].foodRegenerationRate} onChange={event => updateWorldSetting('foodRegenerationRate', Number(event.target.value))} /></label><label>Métabolisme (énergie/s)<input type="number" min="0" step="0.01" value={draftCounts[selectedId].baseMetabolismRate} onChange={event => updateWorldSetting('baseMetabolismRate', Number(event.target.value))} /></label><label>Coût mouvement (énergie/u)<input type="number" min="0" step="0.0001" value={draftCounts[selectedId].movementEnergyCost} onChange={event => updateWorldSetting('movementEnergyCost', Number(event.target.value))} /></label><label>Seuil de division<input type="number" min="0" step="1" value={draftCounts[selectedId].divisionEnergyThreshold} onChange={event => updateWorldSetting('divisionEnergyThreshold', Number(event.target.value))} /></label><label>Mutation par division (%)<input type="number" min="0" max="100" step="1" value={draftCounts[selectedId].mutationRate * 100} onChange={event => updateWorldSetting('mutationRate', Number(event.target.value) / 100)} /></label><label>Amplitude mutation<input type="number" min="0" max="1" step="0.01" value={draftCounts[selectedId].mutationStep} onChange={event => updateWorldSetting('mutationStep', Number(event.target.value))} /></label><label>Coût adhésion (énergie/s/lien)<input type="number" min="0" step="0.001" value={draftCounts[selectedId].adhesionEnergyCost} onChange={event => updateWorldSetting('adhesionEnergyCost', Number(event.target.value))} /></label><p>Réglages appliqués à la réinitialisation.</p><p>Pas fixe : <strong>33,3 ms · worker indépendant</strong></p></div>}
+    {showSettings && <div className="settings-popover"><div className="section-kicker">ÉCOSYSTÈME · {selected.name.toUpperCase()}</div><label>Population initiale<input type="number" min="0" max="2000" value={draftCounts[selectedId].organisms} onChange={event => updateWorldSetting('organisms', Number(event.target.value))} /></label><label>Population maximale<input type="number" min="0" max="10000" step="1" value={draftCounts[selectedId].maximumPopulation} onChange={event => updateWorldSetting('maximumPopulation', Number(event.target.value))} /></label><label>Ressources initiales<input type="number" min="0" max="2000" value={draftCounts[selectedId].foods} onChange={event => updateWorldSetting('foods', Number(event.target.value))} /></label><label>Énergie par ressource<input type="number" min="0" step="1" value={draftCounts[selectedId].foodEnergy} onChange={event => updateWorldSetting('foodEnergy', Number(event.target.value))} /></label><label>Régénération ressources/s<input type="number" min="0" step="0.1" value={draftCounts[selectedId].foodRegenerationRate} onChange={event => updateWorldSetting('foodRegenerationRate', Number(event.target.value))} /></label><label>Métabolisme (énergie/s)<input type="number" min="0" step="0.01" value={draftCounts[selectedId].baseMetabolismRate} onChange={event => updateWorldSetting('baseMetabolismRate', Number(event.target.value))} /></label><label>Coût mouvement (énergie/u)<input type="number" min="0" step="0.0001" value={draftCounts[selectedId].movementEnergyCost} onChange={event => updateWorldSetting('movementEnergyCost', Number(event.target.value))} /></label><label>Seuil de division<input type="number" min="0" step="1" value={draftCounts[selectedId].divisionEnergyThreshold} onChange={event => updateWorldSetting('divisionEnergyThreshold', Number(event.target.value))} /></label><label>Mutation par division (%)<input type="number" min="0" max="100" step="1" value={draftCounts[selectedId].mutationRate * 100} onChange={event => updateWorldSetting('mutationRate', Number(event.target.value) / 100)} /></label><label>Amplitude mutation<input type="number" min="0" max="1" step="0.01" value={draftCounts[selectedId].mutationStep} onChange={event => updateWorldSetting('mutationStep', Number(event.target.value))} /></label><label>Coût adhésion (énergie/s/lien)<input type="number" min="0" step="0.001" value={draftCounts[selectedId].adhesionEnergyCost} onChange={event => updateWorldSetting('adhesionEnergyCost', Number(event.target.value))} /></label><p>Réglages appliqués à la réinitialisation.</p><p>Pas fixe : <strong>33,3 ms · worker indépendant</strong></p><TerrainSettings value={terrainDrafts[selectedId]} onChange={updateTerrainSetting} onRandomSeed={randomizeTerrainSeed} /></div>}
     <section className="workspace">
       <div className="canvas-column">
         <div className="canvas-toolbar"><div><span className="breadcrumb">ESPACE DE SIMULATION</span><span className="breadcrumb-separator">/</span><span className="current-world">{selected.name}</span></div><button className="center-button" onClick={() => setCameraResetKey(value => value + 1)}><span>⌖</span> Recentrer</button></div>
-        <div className="canvas-frame"><WorldCanvas key={`${selected.id}-${cameraResetKey}`} world={selected} theme={theme} selectedOrganismId={selectedOrganismId} onSelectOrganism={setSelectedOrganismId} onResetCamera={() => setCameraResetKey(value => value + 1)} /><div className="canvas-corner top-left" /><div className="canvas-corner top-right" /><div className="canvas-corner bottom-left" /><div className="canvas-corner bottom-right" /><div className="canvas-coordinates">PLAN XY <span>·</span> UNITÉS DE MONDE</div><div className="canvas-grid-icon">＋</div></div>
+        <div className="canvas-frame"><WorldCanvas key={`${selected.id}-${cameraResetKey}`} world={selected} terrain={terrains[selected.id]} theme={theme} selectedOrganismId={selectedOrganismId} onSelectOrganism={setSelectedOrganismId} onResetCamera={() => setCameraResetKey(value => value + 1)} onHoverTerrain={setHoveredTerrain} /><TerrainLegend /><div className="canvas-corner top-left" /><div className="canvas-corner top-right" /><div className="canvas-corner bottom-left" /><div className="canvas-corner bottom-right" /><div className="canvas-coordinates">PLAN XY <span>·</span> UNITÉS DE MONDE</div><div className="canvas-grid-icon">＋</div></div>
         <SimulationControls world={selected} onCommand={command} />
         <div className="workspace-foot"><span>GLISSER POUR DÉPLACER <b>·</b> MOLETTE POUR ZOOMER <b>·</b> DOUBLE-CLIC POUR RECENTRER</span><span>RENDER 2D <i>●</i></span></div>
       </div>
-      <WorldInfo world={selected} selectedOrganismId={selectedOrganismId} deathNotice={deathNotice} loading={!readyWorlds[selected.id]} />
+      <WorldInfo world={selected} selectedOrganismId={selectedOrganismId} deathNotice={deathNotice} loading={!readyWorlds[selected.id]} hoveredTerrain={hoveredTerrain} />
     </section>
-    <footer className="app-footer"><span>ARTIFICIAL LIFE <span className="footer-sep">/</span> LABORATOIRE DE VIE ARTIFICIELLE</span><span>ENVIRONNEMENT DE SIMULATION <span className="footer-sep">·</span> V.0.5.1</span></footer>
+    <footer className="app-footer"><span>ARTIFICIAL LIFE <span className="footer-sep">/</span> LABORATOIRE DE VIE ARTIFICIELLE</span><span>ENVIRONNEMENT DE SIMULATION <span className="footer-sep">·</span> V.0.6</span></footer>
   </main>
 }

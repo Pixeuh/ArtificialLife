@@ -1,5 +1,7 @@
 import type { WorldSnapshot, Point } from '../core/types'
 import { Camera, WORLD_SCALE } from './Camera'
+import { TerrainRenderer } from './TerrainRenderer'
+import type { TerrainSnapshot } from '../environment/terrain/terrainTypes'
 
 export interface CanvasPalette {
   background: string
@@ -14,12 +16,17 @@ export interface CanvasPalette {
   direction: string
   selection: string
   food: string
+  terrain: TerrainColors
 }
 
+export type TerrainColors = Record<'plains' | 'forest' | 'desert' | 'mountain' | 'water', string>
+
 export class WorldRenderer {
+  private readonly terrainRenderer = new TerrainRenderer()
   static readonly defaultPalette: CanvasPalette = {
     background: '#080c10', grid: '#182329', boundary: '#3b5960', origin: '#69e4c2', label: '#667b80',
     organism: '#75dced', organismLow: '#e8c66c', organismCritical: '#ed826f', organismStroke: '#c0f7ff', direction: '#c0f7ff', selection: '#a5f1df', food: '#8be878',
+    terrain: { plains: '#536c48', forest: '#294d37', desert: '#8c7950', mountain: '#68716e', water: '#26566c' },
   }
 
   static readPalette(readVariable: (name: string) => string): CanvasPalette {
@@ -37,13 +44,26 @@ export class WorldRenderer {
       direction: readVariable('--canvas-direction') || defaults.direction,
       selection: readVariable('--canvas-selection') || defaults.selection,
       food: readVariable('--canvas-food') || defaults.food,
+      terrain: {
+        plains: readVariable('--terrain-plains') || defaults.terrain.plains,
+        forest: readVariable('--terrain-forest') || defaults.terrain.forest,
+        desert: readVariable('--terrain-desert') || defaults.terrain.desert,
+        mountain: readVariable('--terrain-mountain') || defaults.terrain.mountain,
+        water: readVariable('--terrain-water') || defaults.terrain.water,
+      },
     }
+  }
+
+  setTerrain(terrain: TerrainSnapshot | undefined, palette: CanvasPalette): void {
+    this.terrainRenderer.setTerrain(terrain, palette.terrain)
   }
 
   draw(context: CanvasRenderingContext2D, width: number, height: number, world: WorldSnapshot, camera: Camera, selectedOrganismId: string | null = null, palette: CanvasPalette = WorldRenderer.defaultPalette): void {
     const { zoom } = camera
     context.fillStyle = palette.background
     context.fillRect(0, 0, width, height)
+    const terrainOrigin = camera.worldToScreen({ x: 0, y: 0 }, { x: width, y: height })
+    this.terrainRenderer.draw(context, terrainOrigin.x, terrainOrigin.y, world.width * WORLD_SCALE * zoom, world.height * WORLD_SCALE * zoom)
     this.drawGrid(context, width, height, camera, palette)
 
     const origin = camera.worldToScreen({ x: 0, y: 0 }, { x: width, y: height })

@@ -29,3 +29,12 @@ export class SeededRandom {
     this.state = seed >>> 0
   }
 }
+
+/** Derive stable, independent PRNG streams without consuming another stream. */
+export function deriveSeed(seed: number, label: string): number {
+  let hash = (seed >>> 0) ^ 0x811c9dc5
+  for (let index = 0; index < label.length; index += 1) {
+    hash = Math.imul(hash ^ label.charCodeAt(index), 0x01000193)
+  }
+  return hash >>> 0
+}

@@ -1,4 +1,5 @@
 import type { WorldDefinition, WorldSnapshot } from '../core/types'
+import type { TerrainSnapshot } from '../environment/terrain/terrainTypes'
 
 export type WorkerCommand =
   | { type: 'initialize'; world: WorldDefinition }
@@ -9,4 +10,4 @@ export type WorkerCommand =
   | { type: 'get-state' }
   | { type: 'destroy' }
 
-export type WorkerEvent = { type: 'state'; world: WorldSnapshot } | { type: 'error'; message: string }
+export type WorkerEvent = { type: 'state'; world: WorldSnapshot } | { type: 'terrain'; worldId: string; terrain: TerrainSnapshot } | { type: 'error'; message: string }

@@ -23,6 +23,7 @@ export class ReproductionSystem {
         world.config,
         random,
         daughterEnergy,
+        world.terrain,
       )
       world.nextOrganismNumber += 1
       offspring.push(daughter)
@@ -36,14 +37,10 @@ export class ReproductionSystem {
         const dy = daughter.y - parent.y
         const distance = Math.max(Number.EPSILON, Math.hypot(dx, dy))
         const restLength = supportRadius(parent, dx / distance, dy / distance) + supportRadius(daughter, -dx / distance, -dy / distance) + 0.1
-        world.links.push({
-          id: `${parent.id}::${daughter.id}`,
-          cellAId: parent.id,
-          cellBId: daughter.id,
-          restLength,
-          breakDistance: restLength * (1 + strength * 0.75),
-          strength,
-        })
+        const breakDistance = restLength * (1 + strength * 0.75)
+        if (world.terrain.canOccupy(daughter.x, daughter.y, daughter.radius, daughter.genome.aspectRatio, daughter.direction) && distance <= breakDistance) {
+          world.links.push({ id: `${parent.id}::${daughter.id}`, cellAId: parent.id, cellBId: daughter.id, restLength, breakDistance, strength })
+        }
       }
     }
     parents.push(...offspring)

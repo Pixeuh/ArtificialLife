@@ -1,6 +1,8 @@
 import type { EvolutionSample, WorldSnapshot } from '../core/types'
+import type { TerrainCell } from '../environment/terrain/terrainTypes'
+import { biomeLabel } from './TerrainLegend'
 
-export function WorldInfo({ world, selectedOrganismId, deathNotice = false, loading = false }: { world: WorldSnapshot; selectedOrganismId: string | null; deathNotice?: boolean; loading?: boolean }) {
+export function WorldInfo({ world, selectedOrganismId, deathNotice = false, loading = false, hoveredTerrain }: { world: WorldSnapshot; selectedOrganismId: string | null; deathNotice?: boolean; loading?: boolean; hoveredTerrain?: TerrainCell | null }) {
   const selected = world.organisms.find(organism => organism.id === selectedOrganismId)
   const extinct = !loading && world.statistics.population === 0 && world.tick > 0
   const energyRatio = selected ? Math.max(0, Math.min(1, selected.energy / Math.max(selected.maxEnergy, Number.EPSILON))) : 0
@@ -8,6 +10,10 @@ export function WorldInfo({ world, selectedOrganismId, deathNotice = false, load
     <div className="section-kicker"><span className="kicker-line" />OBSERVATION</div>
     <div className="world-heading"><div className="world-symbol">◈</div><div><div className="world-mode">{world.interventionMode === 'observation' ? 'OBSERVATION' : 'MODE DIVIN'} · {world.originType === 'primordial' ? 'PRIMORDIAL' : 'PERSONNALISÉ'}</div><h1>{world.name}</h1></div></div>
     <p className="world-description">Un écosystème primitif où organismes et ressources évoluent selon des règles déterministes.</p>
+    <div className="terrain-readout" aria-live="polite">
+      <span className="section-kicker">TERRAIN INSPECTÉ</span>
+      {hoveredTerrain ? <><strong>{biomeLabel(hoveredTerrain.biome)}</strong><span>Altitude {Math.round(hoveredTerrain.elevation * 100)} · Humidité {Math.round(hoveredTerrain.moisture * 100)} · Température {Math.round(hoveredTerrain.temperature * 100)}</span><span>{hoveredTerrain.traversable ? `Coût de déplacement ×${hoveredTerrain.movementCost.toFixed(2)} · potentiel de nourriture ${Math.round(hoveredTerrain.foodPotential * 100)} %` : 'Zone aquatique · déplacement impossible'}</span></> : <span>Passez le curseur sur la carte.</span>}
+    </div>
     <div className="info-divider" />
     <div className="section-kicker">PARAMÈTRES DU MONDE</div>
     <dl className="info-list">

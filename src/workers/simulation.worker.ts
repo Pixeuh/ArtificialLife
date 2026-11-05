@@ -12,6 +12,10 @@ const publish = (): void => {
   if (simulation) self.postMessage({ type: 'state', world: simulation.world.snapshot() } satisfies WorkerEvent)
 }
 
+const publishTerrain = (): void => {
+  if (simulation) self.postMessage({ type: 'terrain', worldId: simulation.world.id, terrain: simulation.world.terrain.snapshot() } satisfies WorkerEvent)
+}
+
 const loop = (): void => {
   if (!running || !simulation) return
   const now = performance.now()
@@ -31,6 +35,7 @@ self.onmessage = (event: MessageEvent<WorkerCommand>): void => {
       case 'initialize':
         simulation = new Simulation(command.world)
         running = false
+        publishTerrain()
         publish()
         break
       case 'start':
@@ -55,6 +60,7 @@ self.onmessage = (event: MessageEvent<WorkerCommand>): void => {
         running = false
         if (frameHandle) self.clearTimeout(frameHandle)
         simulation?.reset(command.world)
+        publishTerrain()
         publish()
         break
       case 'get-state':

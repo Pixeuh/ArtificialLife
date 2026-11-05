@@ -1,6 +1,14 @@
 # Artificial Life
 
-Prototype expérimental de simulation 2D de vie artificielle. La version 0.5.1 consolide les mondes reproductibles, les catégories de monde, la sérialisation de l'état et les premières mesures de performance. Les organismes actuels sont des cellules abstraites : ils ne sont ni des animaux ni des intelligences artificielles cognitives.
+## Version 0.6 — terrains et biomes
+
+Les mondes possèdent maintenant une carte procédurale déterministe dérivée de leur seed : plaines, forêts, déserts, montagnes et plans d'eau cohérents. Les cellules de terrain contiennent altitude, humidité, température, type de terrain, accessibilité, coût de déplacement et potentiel de nourriture. L'eau bloque le déplacement ; les biomes difficiles réduisent la vitesse. La dépense énergétique de mouvement suit cette vitesse effective, sans appliquer deux fois le coût du terrain. La nourriture est initialisée et régénérée sur les biomes terrestres, avec une densité favorisant les zones productives.
+
+La carte est générée dans le moteur sans dépendance au DOM, avec une graine dérivée indépendante du flux biologique. Le worker transmet un instantané de terrain à l'initialisation et à la réinitialisation, puis continue d'envoyer uniquement les instantanés d'écosystème habituels. Le rendu raster statique est mis en cache séparément des cellules animées. Les réglages de seed, relief, humidité et proportion d'eau sont appliqués lors de la création d'un nouveau monde ; **Rejouer** reproduit seed, terrain et état initial. Les seeds personnalisées sont accessibles dans Paramètres.
+
+Les sauvegardes moteur V1 existantes restent lisibles ; les nouvelles sauvegardes V2 enregistrent également l'état du flux aléatoire indépendant des ressources. L'application n'ajoute pas d'import/export ou de stockage persistant.
+
+Prototype expérimental de simulation 2D de vie artificielle. Les organismes actuels sont des cellules abstraites : ils ne sont ni des animaux ni des intelligences artificielles cognitives.
 
 Le principe de travail est de programmer des règles et des contraintes explicites, puis d'observer leurs conséquences. Une émergence sociale ou cognitive reste une hypothèse de recherche, jamais un résultat garanti par le modèle.
 
@@ -37,6 +45,7 @@ Les mondes de démonstration ont chacun des graines et paramètres initiaux diff
 ## Mécanismes présents
 
 - Cellules dotées d'énergie, d'âge, d'un métabolisme et d'un mouvement aléatoire local.
+- Carte de terrain déterministe avec plaines, forêts, déserts, montagnes et eau ; les cellules ne traversent pas l'eau et la vitesse effective limite la dépense de mouvement au même facteur.
 - Consommation de ressources ponctuelles, dépense énergétique, mort par épuisement et régénération des ressources.
 - Division asexuée avec partage de l'énergie et mutations possibles de deux traits héréditaires : adhésion et rapport d'allongement.
 - Corps elliptiques orientés ; leur forme influence les contacts, l'accès aux nutriments et la résolution physique.
@@ -51,7 +60,7 @@ Hypothèses observables : des ressources rares pourraient rendre coûteux le fai
 
 Une expérience reproductible doit conserver la seed, la configuration, le nombre de ticks, la version du code et les conditions d'exécution. Le PRNG Mulberry32 est propre à chaque simulation. Les actions d'interface utilisent `crypto.getRandomValues` uniquement pour proposer une nouvelle seed ; elles n'interviennent pas dans les règles du moteur.
 
-Le moteur distingue l'instantané léger `WorldSnapshot`, destiné au rendu et aux statistiques, de `SimulationSaveV1`, destiné à reprendre le calcul. Le format versionné complet contient notamment l'état du PRNG, l'accumulateur de l'horloge, les cellules et leurs traits, les liens, les ressources, les compteurs, l'historique et l'état du régénérateur de ressources. `Simulation.save()` et `Simulation.fromSave()` sont des interfaces moteur ; l'application ne propose pas encore d'import/export ou de stockage persistant.
+Le moteur distingue l'instantané léger `WorldSnapshot`, destiné au rendu et aux statistiques, des sauvegardes `SimulationSaveV1` et `SimulationSaveV2`, destinées à reprendre le calcul. V1 reste lisible. V2 enregistre les états des flux aléatoires séparés et la configuration de terrain ; la carte est reconstruite depuis la seed. Le format versionné contient les cellules et leurs traits, les liens, les ressources, les compteurs, l'historique et l'état du régénérateur. `Simulation.save()` et `Simulation.fromSave()` sont des interfaces moteur ; l'application ne propose pas encore d'import/export ou de stockage persistant.
 
 Pour comparer une hypothèse, fixer toutes les conditions sauf une et répéter sur plusieurs seeds. Les taux affichés sont des moyennes cumulées depuis le début du monde. Une différence dans une seule simulation ne démontre pas un avantage évolutif général.
 
@@ -61,7 +70,7 @@ Pour comparer une hypothèse, fixer toutes les conditions sauf une et répéter 
 src/
   core/         monde, horloge fixe, PRNG, simulation, format de sauvegarde
   organisms/    cellules, création, géométrie et appartenance aux colonies
-  environment/  ressources et régénération
+  environment/  terrain procédural, biomes, ressources et régénération
   systems/      alimentation, métabolisme, mouvement, reproduction, adhésion,
                 collisions et grille spatiale commune
   workers/      protocole typé et exécution hors du fil principal
@@ -83,15 +92,15 @@ Avant la grille, la recherche de cellule pour chaque ressource balayait la popul
 
 - Les mouvements n'utilisent ni capteurs ni décision orientée vers un objectif ; il n'y a pas de cerveau, mémoire ou apprentissage.
 - Le solveur de collision est une correction positionnelle légère, sans inertie ni énergie cinétique complète ; des recouvrements peuvent persister dans les scènes denses.
-- Les ressources sont ponctuelles et uniformément régénérées ; il n'y a ni diffusion, gradients, absorption partielle ou climat.
+- Les ressources restent ponctuelles ; il n'y a ni diffusion, gradients, absorption partielle ou climat dynamique. Leur apparition est désormais pondérée par le potentiel de nourriture des biomes.
 - Les cellules sont elliptiques, sans segments, organes ou membres. Les colonies ne constituent pas encore des organismes multicellulaires spécialisés.
-- Il n'y a ni terrain, biomes, obstacles, interaction divine, communication, langage, objets, constructions, espèces ou civilisations simulés.
+- Il n'y a pas encore d'interaction divine, communication, langage, objets, constructions, espèces ou civilisations simulés. Les rivières, saisons et climats dynamiques restent à implémenter.
 - Les résultats émergents ne sont pas garantis et le modèle n'est pas une reproduction fidèle de l'histoire de la vie terrestre.
 
 ## Suite envisagée
 
 1. Exploiter les seeds et la sérialisation pour organiser des expériences comparatives et des tests de longues séries.
-2. Préparer puis implémenter des terrains et biomes, sans confondre leur rendu 2D/2,5D avec les règles écologiques.
+2. Étudier des gradients et variations climatiques sans introduire de comportements codés en dur.
 3. Étendre progressivement la morphologie modulaire et les mécanismes multicellulaires, avec mesures et tests dédiés.
 4. Étudier des capteurs, des réseaux neuronaux, de la mémoire et de l'apprentissage avant tout objectif de comportement complexe.
 5. Explorer les interactions, la communication et les constructions seulement lorsque les mécanismes sous-jacents sont définis et vérifiables.

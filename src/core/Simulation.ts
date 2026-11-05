@@ -1,4 +1,4 @@
-import { SeededRandom } from './SeededRandom'
+import { deriveSeed, SeededRandom } from './SeededRandom'
 import { SimulationClock } from './SimulationClock'
 import { World } from './World'
 import { FeedingSystem } from '../systems/FeedingSystem'
@@ -11,7 +11,7 @@ import { AdhesionSystem } from '../systems/AdhesionSystem'
 import { CellPhysicsSystem } from '../systems/CellPhysicsSystem'
 import { ResourceManager } from '../environment/ResourceManager'
 import type { WorldDefinition } from './types'
-import type { SimulationSaveV1 } from './SimulationSave'
+import type { SimulationSave, SimulationSaveV2 } from './SimulationSave'
 import { Organism } from '../organisms/Organism'
 import { FoodResource } from '../environment/FoodResource'
 
@@ -19,6 +19,7 @@ import { FoodResource } from '../environment/FoodResource'
 export class Simulation {
   world: World
   readonly random: SeededRandom
+  resourceRandom: SeededRandom
   readonly clock = new SimulationClock()
   private definition: WorldDefinition
   private resourceManager: ResourceManager
@@ -27,6 +28,7 @@ export class Simulation {
     this.definition = definition
     this.world = new World(definition)
     this.random = new SeededRandom(definition.seed)
+    this.resourceRandom = new SeededRandom(deriveSeed(definition.seed, 'resources-v1'))
     this.resourceManager = this.initializeEcosystem()
   }
 
@@ -35,18 +37,18 @@ export class Simulation {
     // Stable tick order: prune; move; constrain/break links; feed; charge each cell
     // (including link maintenance); prune; divide; regenerate resources; advance time.
     LifecycleSystem.removeDead(this.world)
-    MovementSystem.update(this.world.organisms, this.world.width, this.world.height, this.world.config, this.random, deltaTime)
-    CellPhysicsSystem.resolve(this.world.organisms, this.world.width, this.world.height, 2)
-    AdhesionSystem.constrain(this.world)
-    CellPhysicsSystem.resolve(this.world.organisms, this.world.width, this.world.height, 1)
+    MovementSystem.update(this.world.organisms, this.world.width, this.world.height, this.world.config, this.random, deltaTime, this.world.terrain)
+    CellPhysicsSystem.resolve(this.world.organisms, this.world.width, this.world.height, 2, this.world.terrain)
+    AdhesionSystem.constrain(this.world, this.world.terrain)
+    CellPhysicsSystem.resolve(this.world.organisms, this.world.width, this.world.height, 1, this.world.terrain)
     this.world.totalFoodConsumed += FeedingSystem.update(this.world.organisms, this.world.resources, this.world.config)
-    MetabolismSystem.update(this.world.organisms, deltaTime, this.world.links, this.world.config.adhesionEnergyCost)
+    MetabolismSystem.update(this.world.organisms, deltaTime, this.world.links, this.world.config.adhesionEnergyCost, this.world.terrain)
     LifecycleSystem.removeDead(this.world)
     AdhesionSystem.removeDangling(this.world)
     const births = ReproductionSystem.update(this.world, this.random)
     if (births > 0) {
-      AdhesionSystem.constrain(this.world)
-      CellPhysicsSystem.resolve(this.world.organisms, this.world.width, this.world.height, 1)
+      AdhesionSystem.constrain(this.world, this.world.terrain)
+      CellPhysicsSystem.resolve(this.world.organisms, this.world.width, this.world.height, 1, this.world.terrain)
     }
     this.resourceManager.regenerate(deltaTime)
     this.world.step()
@@ -57,14 +59,16 @@ export class Simulation {
     return this.clock.advance(this.world, elapsedSeconds, () => this.step())
   }
 
-  save(): SimulationSaveV1 {
+  save(): SimulationSaveV2 {
     const world = this.world
     return {
-      format: 'artificial-life-simulation', version: 1,
-      definition: { id: world.id, name: world.name, width: world.width, height: world.height, seed: world.seed, originType: world.originType, interventionMode: world.interventionMode, config: world.config },
+      format: 'artificial-life-simulation', version: 2,
+      definition: { id: world.id, name: world.name, width: world.width, height: world.height, seed: world.seed, originType: world.originType, interventionMode: world.interventionMode, config: world.config, terrainConfig: world.terrain.config },
       randomState: this.random.getState(), clockAccumulator: this.clock.getAccumulator(),
+      resourceRandomState: this.resourceRandom.getState(),
       world: {
         tick: world.tick, simulatedTime: world.simulatedTime, paused: world.paused, speed: world.speed,
+        initialPopulation: world.initialPopulation,
         organisms: world.organisms.map(cell => ({ id: cell.id, x: cell.x, y: cell.y, direction: cell.direction, speed: cell.speed, radius: cell.radius, energy: cell.energy, maxEnergy: cell.maxEnergy, baseMetabolismRate: cell.baseMetabolismRate, movementEnergyCost: cell.movementEnergyCost, genome: { ...cell.genome }, generation: cell.generation, age: cell.age, active: cell.active, foodConsumed: cell.foodConsumed })),
         resources: world.resources.map(resource => resource.snapshot()), links: world.links.map(link => ({ ...link })), history: world.history.map(sample => ({ ...sample })),
         lastHistoryTime: world.lastHistoryTime, totalDeaths: world.totalDeaths, starvationDeaths: world.starvationDeaths,
@@ -74,8 +78,8 @@ export class Simulation {
     }
   }
 
-  static fromSave(save: SimulationSaveV1): Simulation {
-    if (save.format !== 'artificial-life-simulation' || save.version !== 1) throw new RangeError('Unsupported simulation save format or version.')
+  static fromSave(save: SimulationSave): Simulation {
+    if (save.format !== 'artificial-life-simulation' || (save.version !== 1 && save.version !== 2)) throw new RangeError('Unsupported simulation save format or version.')
     const simulation = new Simulation(save.definition)
     const world = simulation.world
     const state = save.world
@@ -93,6 +97,7 @@ export class Simulation {
     world.simulatedTime = state.simulatedTime
     world.paused = state.paused
     world.speed = state.speed
+    world.initialPopulation = state.initialPopulation ?? world.config.initialOrganismCount
     world.lastHistoryTime = state.lastHistoryTime
     world.totalDeaths = state.totalDeaths
     world.starvationDeaths = state.starvationDeaths
@@ -101,7 +106,9 @@ export class Simulation {
     world.nextOrganismNumber = state.nextOrganismNumber
     simulation.random.restoreState(save.randomState)
     simulation.clock.restoreAccumulator(save.clockAccumulator)
-    simulation.resourceManager = new ResourceManager(world.resources, world.width, world.height, world.config, simulation.random)
+    if (save.version === 1) simulation.resourceRandom = simulation.random
+    else simulation.resourceRandom.restoreState(save.resourceRandomState)
+    simulation.resourceManager = new ResourceManager(world.resources, world.width, world.height, world.config, simulation.resourceRandom, world.terrain)
     simulation.resourceManager.restoreState(save.resourceManager)
     return simulation
   }
@@ -115,16 +122,18 @@ export class Simulation {
     this.definition = definition
     this.world = new World(definition)
     this.random.reset(definition.seed)
+    this.resourceRandom = new SeededRandom(deriveSeed(definition.seed, 'resources-v1'))
     this.clock.reset()
     this.resourceManager = this.initializeEcosystem()
   }
 
   private initializeEcosystem(): ResourceManager {
     const config = this.world.config
-    this.world.organisms = OrganismFactory.createAll(config.initialOrganismCount, this.world.width, this.world.height, config, this.random)
-    this.world.nextOrganismNumber = config.initialOrganismCount
+    this.world.organisms = OrganismFactory.createAll(config.initialOrganismCount, this.world.width, this.world.height, config, this.random, this.world.terrain)
+    this.world.initialPopulation = this.world.organisms.length
+    this.world.nextOrganismNumber = this.world.organisms.length
     const resources: import('../environment/FoodResource').FoodResource[] = []
-    const manager = new ResourceManager(resources, this.world.width, this.world.height, config, this.random)
+    const manager = new ResourceManager(resources, this.world.width, this.world.height, config, this.resourceRandom, this.world.terrain)
     manager.createInitial(Math.min(config.initialFoodCount, config.maxFoodCount))
     this.world.resources = resources
     this.world.recordHistorySample()
