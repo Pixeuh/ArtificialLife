@@ -1,5 +1,6 @@
 import type { Organism } from '../organisms/Organism'
 import { cellBoundaryExtents, supportRadius } from '../organisms/CellGeometry'
+import { SpatialHashGrid } from './SpatialHashGrid'
 
 export interface CollisionResolution { readonly candidatePairs: number; readonly resolvedPairs: number }
 interface Pair { readonly first: number; readonly second: number }
@@ -50,30 +51,14 @@ function findCandidatePairs(cells: readonly Organism[]): Pair[] {
     const extents = cellBoundaryExtents(cell)
     maxExtent = Math.max(maxExtent, extents.x, extents.y)
   }
-  const bucketSize = maxExtent * 2
-  const buckets = new Map<string, number[]>()
-  const bucketOf: Array<{ x: number; y: number }> = new Array(cells.length)
-  for (let index = 0; index < cells.length; index += 1) {
-    const cell = cells[index]
-    const x = Math.floor(cell.x / bucketSize)
-    const y = Math.floor(cell.y / bucketSize)
-    bucketOf[index] = { x, y }
-    const key = bucketKey(x, y)
-    const bucket = buckets.get(key)
-    if (bucket) bucket.push(index)
-    else buckets.set(key, [index])
-  }
-
+  const grid = new SpatialHashGrid(maxExtent * 2)
+  grid.rebuild(cells)
+  const nearby: number[] = []
   const pairs: Pair[] = []
   for (let first = 0; first < cells.length; first += 1) {
-    const bucket = bucketOf[first]
-    for (let offsetY = -1; offsetY <= 1; offsetY += 1) {
-      for (let offsetX = -1; offsetX <= 1; offsetX += 1) {
-        for (const second of buckets.get(bucketKey(bucket.x + offsetX, bucket.y + offsetY)) ?? []) {
-          if (second > first) pairs.push({ first, second })
-        }
-      }
-    }
+    const cell = cells[first]
+    grid.query(cell.x, cell.y, maxExtent * 2, nearby)
+    for (const second of nearby) if (second > first) pairs.push({ first, second })
   }
   return pairs
 }
@@ -91,5 +76,4 @@ function stablePairAngle(first: string, second: string): number {
   return ((hash >>> 0) / 0x1_0000_0000) * Math.PI * 2
 }
 
-function bucketKey(x: number, y: number): string { return x + ',' + y }
 function clamp(value: number, minimum: number, maximum: number): number { return Math.max(minimum, Math.min(maximum, value)) }

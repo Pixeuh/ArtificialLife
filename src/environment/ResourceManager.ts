@@ -23,6 +23,15 @@ export class ResourceManager {
     for (let index = 0; index < count; index += 1) this.resources.push(this.create())
   }
 
+  saveState(): { nextId: number; regenerationRemainder: number } {
+    return { nextId: this.nextId, regenerationRemainder: this.regenerationRemainder }
+  }
+
+  restoreState(state: { nextId: number; regenerationRemainder: number }): void {
+    this.nextId = state.nextId
+    this.regenerationRemainder = state.regenerationRemainder
+  }
+
   private create(): FoodResource {
     const index = this.nextId++
     const radius = this.config.foodRadius

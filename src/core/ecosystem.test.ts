@@ -68,6 +68,20 @@ describe('ecosystem determinism and systems', () => {
     expect(second.foodConsumed).toBe(0)
   })
 
+  it('uses stable spatial candidates for feeding without changing single-use resource semantics', () => {
+    const settings = config({ initialOrganismCount: 0 })
+    const cells = Array.from({ length: 500 }, (_, index) => new Organism(`far-${index}`, 100 + index * 100, 100, 0, 0, 5, 10))
+    cells.unshift(new Organism('first', 100, 100, 0, 0, 5, 10), new Organism('second', 100, 100, 0, 0, 5, 10))
+    const resources = [new FoodResource('only-once', 105, 100, 5, 30)]
+    const metrics = { candidateChecks: 0, blockerChecks: 0 }
+    expect(FeedingSystem.update(cells, resources, settings, metrics)).toBe(1)
+    expect(resources).toHaveLength(0)
+    expect(cells[0].foodConsumed).toBe(1)
+    expect(cells[1].foodConsumed).toBe(0)
+    expect(metrics.candidateChecks).toBeLessThan(20)
+    expect(metrics.candidateChecks).toBeLessThan(cells.length)
+  })
+
   it('regenerates resources deterministically and respects the configured cap', () => {
     const make = () => {
       const settings = config({ maxFoodCount: 3, foodRegenerationRate: 2 })
@@ -293,6 +307,17 @@ describe('ecosystem determinism and systems', () => {
     expect(covered.energy).toBe(10)
     expect(exposed.energy).toBe(40)
     expect(resources).toHaveLength(0)
+  })
+
+  it('indexes nearby occluders beside a long target-to-resource ray', () => {
+    const settings = config({ initialOrganismCount: 0 })
+    const target = new Organism('target', 115, 100, 0, 0, 10, 10)
+    const blocker = new Organism('blocker', 114, 109, 0, 0, 10, 10)
+    const resources = [new FoodResource('ray-edge', 100, 100, 5, 30)]
+    FeedingSystem.update([target, blocker], resources, settings)
+    expect(target.foodConsumed).toBe(0)
+    expect(blocker.foodConsumed).toBe(0)
+    expect(resources).toHaveLength(1)
   })
 
   it('tracks population composition, morphology and bounded history', () => {

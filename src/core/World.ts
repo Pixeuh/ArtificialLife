@@ -9,6 +9,8 @@ export class World {
   readonly width: number
   readonly height: number
   readonly seed: number
+  readonly originType: 'primordial' | 'custom'
+  readonly interventionMode: 'observation' | 'divine'
   readonly config: WorldConfig
   organisms: Organism[] = []
   resources: FoodResource[] = []
@@ -32,6 +34,8 @@ export class World {
     this.width = definition.width
     this.height = definition.height
     this.seed = definition.seed >>> 0
+    this.originType = definition.originType ?? 'primordial'
+    this.interventionMode = definition.interventionMode ?? 'observation'
     this.config = normalizeConfig(definition.config)
     this.initialPopulation = this.config.initialOrganismCount
     this.nextOrganismNumber = this.initialPopulation
@@ -57,6 +61,8 @@ export class World {
       width: this.width,
       height: this.height,
       seed: this.seed,
+      originType: this.originType,
+      interventionMode: this.interventionMode,
       config: this.config,
       simulatedTime: this.simulatedTime,
       tick: this.tick,

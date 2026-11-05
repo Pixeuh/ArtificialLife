@@ -7,18 +7,23 @@ import { SimulationControls } from './components/SimulationControls'
 import { WorldCanvas } from './components/WorldCanvas'
 import { WorldInfo } from './components/WorldInfo'
 import { WorldTabs } from './components/WorldTabs'
+import { generateNewSeed } from './components/seedActions'
 
 const definitions: WorldDefinition[] = [
-  { id: 'world-a', name: 'Monde A', width: 4_000, height: 2_500, seed: 381_047_21, config: { initialOrganismCount: 50, initialFoodCount: 250, maxFoodCount: 350 } },
-  { id: 'world-b', name: 'Monde B', width: 4_000, height: 2_500, seed: 927_163_04, config: { initialOrganismCount: 40, initialFoodCount: 180, maxFoodCount: 300 } },
+  { id: 'world-a', name: 'Monde A', width: 4_000, height: 2_500, seed: 381_047_21, originType: 'primordial', interventionMode: 'observation', config: { initialOrganismCount: 50, initialFoodCount: 250, maxFoodCount: 350 } },
+  { id: 'world-b', name: 'Monde B', width: 4_000, height: 2_500, seed: 927_163_04, originType: 'primordial', interventionMode: 'divine', config: { initialOrganismCount: 40, initialFoodCount: 180, maxFoodCount: 300 } },
 ]
 
 type WorldSettings = { organisms: number; foods: number; foodEnergy: number; foodRegenerationRate: number; baseMetabolismRate: number; movementEnergyCost: number; divisionEnergyThreshold: number; mutationRate: number; mutationStep: number; adhesionEnergyCost: number; maximumPopulation: number }
 
 export default function App() {
   const workers = useRef<Worker[]>([])
+  const [worldDefinitions, setWorldDefinitions] = useState(definitions)
+  const [readyWorlds, setReadyWorlds] = useState<Record<string, boolean>>({})
   const [worlds, setWorlds] = useState<WorldSnapshot[]>(() => definitions.map(definition => ({
     ...definition,
+    originType: definition.originType ?? 'primordial',
+    interventionMode: definition.interventionMode ?? 'observation',
     config: { ...WORLD_DEFAULTS, ...definition.config },
     simulatedTime: 0,
     tick: 0,
@@ -65,7 +70,10 @@ export default function App() {
     instances.forEach((worker, index) => {
       worker.onmessage = (event: MessageEvent<WorkerEvent>) => {
         const message = event.data
-        if (message.type === 'state') setWorlds(current => current.map(world => world.id === message.world.id ? message.world : world))
+        if (message.type === 'state') {
+          setReadyWorlds(current => ({ ...current, [message.world.id]: true }))
+          setWorlds(current => current.map(world => world.id === message.world.id ? message.world : world))
+        }
         if (message.type === 'error') console.error(message.message)
       }
       worker.postMessage({ type: 'initialize', world: definitions[index] } satisfies WorkerCommand)
@@ -81,12 +89,16 @@ export default function App() {
     setSelectedOrganismId(null)
   }
 
-  const command = (type: 'start' | 'pause' | 'reset' | 'set-speed', speed?: number): void => {
+  const command = (type: 'start' | 'pause' | 'replay' | 'new-world' | 'set-speed', speed?: number): void => {
     const index = definitions.findIndex(definition => definition.id === selectedId)
     let message: WorkerCommand
     if (type === 'set-speed') message = { type, speed: speed ?? 1 }
-    else if (type === 'reset') {
-      const definition = definitions[index]
+    else if (type === 'replay') {
+      message = { type: 'reset', world: worldDefinitions[index] }
+      setSelectedOrganismId(null)
+      setDeathNotice(false)
+    } else if (type === 'new-world') {
+      const definition = worldDefinitions[index]
       const counts = draftCounts[selectedId]
       const config: Partial<WorldConfig> = {
         ...definition.config,
@@ -103,8 +115,11 @@ export default function App() {
         adhesionEnergyCost: counts.adhesionEnergyCost,
         maximumPopulation: counts.maximumPopulation,
       }
-      message = { type, world: { ...definition, config } }
+      const updatedDefinition = { ...definition, seed: generateNewSeed(definition.seed), config }
+      setWorldDefinitions(current => current.map((item, itemIndex) => itemIndex === index ? updatedDefinition : item))
+      message = { type: 'reset', world: updatedDefinition }
       setSelectedOrganismId(null)
+      setDeathNotice(false)
     } else message = { type }
     workers.current[index]?.postMessage(message)
   }
@@ -126,7 +141,7 @@ export default function App() {
 
   return <main className="app-shell">
     <header className="topbar">
-      <a className="brand" href="#" aria-label="Artificial Life accueil"><span className="brand-mark"><i /><i /><i /><i /></span><span>ARTIFICIAL<span className="brand-light"> LIFE</span></span><span className="version">0.5</span></a>
+      <a className="brand" href="#" aria-label="Artificial Life accueil"><span className="brand-mark"><i /><i /><i /><i /></span><span>ARTIFICIAL<span className="brand-light"> LIFE</span></span><span className="version">0.5.1</span></a>
       <div className="header-divider" />
       <WorldTabs worlds={worlds} selectedId={selectedId} onSelect={selectWorld} />
       <div className="header-right"><span className="system-label"><span className="live-dot" />SYSTÈME OPÉRATIONNEL</span><button className="theme-toggle" onClick={toggleTheme} title={theme === 'dark' ? 'Activer le thème clair' : 'Activer le thème sombre'} aria-label={theme === 'dark' ? 'Activer le thème clair' : 'Activer le thème sombre'} aria-pressed={theme === 'light'}>
@@ -141,8 +156,8 @@ export default function App() {
         <SimulationControls world={selected} onCommand={command} />
         <div className="workspace-foot"><span>GLISSER POUR DÉPLACER <b>·</b> MOLETTE POUR ZOOMER <b>·</b> DOUBLE-CLIC POUR RECENTRER</span><span>RENDER 2D <i>●</i></span></div>
       </div>
-      <WorldInfo world={selected} selectedOrganismId={selectedOrganismId} deathNotice={deathNotice} />
+      <WorldInfo world={selected} selectedOrganismId={selectedOrganismId} deathNotice={deathNotice} loading={!readyWorlds[selected.id]} />
     </section>
-    <footer className="app-footer"><span>ARTIFICIAL LIFE <span className="footer-sep">/</span> LABORATOIRE DE VIE ARTIFICIELLE</span><span>ENVIRONNEMENT DE SIMULATION <span className="footer-sep">·</span> V.0.5.0</span></footer>
+    <footer className="app-footer"><span>ARTIFICIAL LIFE <span className="footer-sep">/</span> LABORATOIRE DE VIE ARTIFICIELLE</span><span>ENVIRONNEMENT DE SIMULATION <span className="footer-sep">·</span> V.0.5.1</span></footer>
   </main>
 }

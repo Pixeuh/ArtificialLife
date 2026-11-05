@@ -105,10 +105,14 @@ export interface WorldDefinition {
   readonly width: number
   readonly height: number
   readonly seed: number
+  readonly originType?: 'primordial' | 'custom'
+  readonly interventionMode?: 'observation' | 'divine'
   readonly config?: Partial<WorldConfig>
 }
 
 export interface WorldSnapshot extends WorldDefinition {
+  readonly originType: 'primordial' | 'custom'
+  readonly interventionMode: 'observation' | 'divine'
   readonly simulatedTime: number
   readonly tick: number
   readonly paused: boolean

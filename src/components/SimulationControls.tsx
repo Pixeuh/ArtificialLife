@@ -2,7 +2,7 @@ import type { WorldSnapshot } from '../core/types'
 
 interface Props {
   world: WorldSnapshot
-  onCommand: (command: 'start' | 'pause' | 'reset' | 'set-speed', speed?: number) => void
+  onCommand: (command: 'start' | 'pause' | 'replay' | 'new-world' | 'set-speed', speed?: number) => void
 }
 
 export function SimulationControls({ world, onCommand }: Props) {
@@ -16,6 +16,7 @@ export function SimulationControls({ world, onCommand }: Props) {
     </div>
     <div className="transport-spacer" />
     <div className="transport-readout"><span className="live-dot" />{world.paused ? 'EN PAUSE' : 'SIMULATION ACTIVE'}</div>
-    <button className="reset-button" onClick={() => onCommand('reset')} aria-label="Réinitialiser le monde"><span>↺</span> Réinitialiser</button>
+    <button className="reset-button" onClick={() => onCommand('replay')} aria-label="Rejouer le monde avec la même graine">↻ Rejouer</button>
+    <button className="reset-button" onClick={() => onCommand('new-world')} aria-label="Générer un nouveau monde avec une nouvelle graine"><span>✦</span> Nouveau monde</button>
   </div>
 }

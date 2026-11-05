@@ -1,24 +1,40 @@
 import type { WorldConfig } from '../core/types'
 import type { FoodResource } from '../environment/FoodResource'
 import type { Organism } from '../organisms/Organism'
-import { getCellAxes, supportRadius } from '../organisms/CellGeometry'
+import { cellBoundaryExtents, getCellAxes, supportRadius } from '../organisms/CellGeometry'
+import { SpatialHashGrid } from './SpatialHashGrid'
+
+export interface FeedingMetrics { candidateChecks: number; blockerChecks: number }
 
 /** Organisms are processed by stable array order; the first touching organism claims each food item. */
 export class FeedingSystem {
-  static update(organisms: Organism[], resources: FoodResource[], config: WorldConfig): number {
+  static update(organisms: Organism[], resources: FoodResource[], config: WorldConfig, metrics?: FeedingMetrics): number {
+    if (metrics) { metrics.candidateChecks = 0; metrics.blockerChecks = 0 }
+    let maxExtent = 1
+    for (const organism of organisms) {
+      const extent = cellBoundaryExtents(organism)
+      maxExtent = Math.max(maxExtent, extent.x, extent.y)
+    }
+    const grid = new SpatialHashGrid(maxExtent * 2)
+    grid.rebuild(organisms)
+    const candidates: number[] = []
     let writeIndex = 0
     let eatenCount = 0
     for (let resourceIndex = 0; resourceIndex < resources.length; resourceIndex += 1) {
       const resource = resources[resourceIndex]
       let consumed = false
-      for (const organism of organisms) {
+      // Include cells beside the source-to-target segment as possible occluders.
+      grid.query(resource.x, resource.y, resource.radius + maxExtent * 2, candidates)
+      for (const candidateIndex of candidates) {
+        if (metrics) metrics.candidateChecks += 1
+        const organism = organisms[candidateIndex]
         if (!organism.active) continue
         const dx = organism.x - resource.x
         const dy = organism.y - resource.y
         const distance = Math.hypot(dx, dy)
         const reach = resource.radius + (distance < Number.EPSILON ? organism.radius : supportRadius(organism, dx / distance, dy / distance))
         if (dx * dx + dy * dy <= reach * reach) {
-          if (!hasNutrientAccess(organism, resource.x, resource.y, organisms)) continue
+          if (!hasNutrientAccess(organism, resource.x, resource.y, organisms, candidates, metrics)) continue
           organism.energy = Math.min(organism.maxEnergy, config.maxEnergy, finiteEnergy(organism.energy) + finiteEnergy(resource.energy))
           organism.foodConsumed += 1
           eatenCount += 1
@@ -34,12 +50,14 @@ export class FeedingSystem {
 }
 
 /** A cell can consume a resource only if no other cell blocks the center-to-center ray. */
-function hasNutrientAccess(target: Organism, sourceX: number, sourceY: number, organisms: readonly Organism[]): boolean {
+function hasNutrientAccess(target: Organism, sourceX: number, sourceY: number, organisms: readonly Organism[], candidates: readonly number[], metrics?: FeedingMetrics): boolean {
   const dx = target.x - sourceX
   const dy = target.y - sourceY
   const lengthSquared = dx * dx + dy * dy
   if (lengthSquared < Number.EPSILON) return true
-  for (const blocker of organisms) {
+  for (const index of candidates) {
+    if (metrics) metrics.blockerChecks += 1
+    const blocker = organisms[index]
     if (blocker === target || !blocker.active) continue
     const t = ((blocker.x - sourceX) * dx + (blocker.y - sourceY) * dy) / lengthSquared
     if (t <= 0 || t >= 1) continue

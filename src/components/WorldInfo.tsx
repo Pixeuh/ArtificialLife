@@ -1,12 +1,12 @@
 import type { EvolutionSample, WorldSnapshot } from '../core/types'
 
-export function WorldInfo({ world, selectedOrganismId, deathNotice = false }: { world: WorldSnapshot; selectedOrganismId: string | null; deathNotice?: boolean }) {
+export function WorldInfo({ world, selectedOrganismId, deathNotice = false, loading = false }: { world: WorldSnapshot; selectedOrganismId: string | null; deathNotice?: boolean; loading?: boolean }) {
   const selected = world.organisms.find(organism => organism.id === selectedOrganismId)
-  const extinct = world.statistics.population === 0
+  const extinct = !loading && world.statistics.population === 0 && world.tick > 0
   const energyRatio = selected ? Math.max(0, Math.min(1, selected.energy / Math.max(selected.maxEnergy, Number.EPSILON))) : 0
   return <aside className="inspector">
     <div className="section-kicker"><span className="kicker-line" />OBSERVATION</div>
-    <div className="world-heading"><div className="world-symbol">◈</div><div><div className="world-mode">{world.id === 'world-a' ? 'MODE NATUREL' : 'MODE DIVIN'}</div><h1>{world.name}</h1></div></div>
+    <div className="world-heading"><div className="world-symbol">◈</div><div><div className="world-mode">{world.interventionMode === 'observation' ? 'OBSERVATION' : 'MODE DIVIN'} · {world.originType === 'primordial' ? 'PRIMORDIAL' : 'PERSONNALISÉ'}</div><h1>{world.name}</h1></div></div>
     <p className="world-description">Un écosystème primitif où organismes et ressources évoluent selon des règles déterministes.</p>
     <div className="info-divider" />
     <div className="section-kicker">PARAMÈTRES DU MONDE</div>
@@ -26,7 +26,7 @@ export function WorldInfo({ world, selectedOrganismId, deathNotice = false }: { 
     </dl>
     <div className="info-divider" />
     <div className="section-kicker">ÉCOSYSTÈME</div>
-    {extinct && <div className="extinction-state" role="status">Population éteinte</div>}
+    {loading ? <div className="extinction-state" role="status">Initialisation du monde…</div> : extinct && <div className="extinction-state" role="status">Population éteinte</div>}
     <div className="tick-row"><span>Cellules vivantes</span><strong className="mono">{world.statistics.population.toLocaleString('fr-FR')}</strong></div>
     <div className="tick-row"><span>Colonies multicellulaires</span><strong className="mono">{world.statistics.colonies.toLocaleString('fr-FR')}</strong></div>
     <div className="tick-row"><span>Divisions</span><strong className="mono">{world.statistics.divisions.toLocaleString('fr-FR')}</strong></div>
@@ -69,7 +69,7 @@ export function WorldInfo({ world, selectedOrganismId, deathNotice = false }: { 
         <div className="tick-row"><span>Nourriture consommée</span><strong className="mono">{selected.foodConsumed}</strong></div>
       </> : <p className="selection-hint">{deathNotice ? 'Organisme mort de faim.' : 'Cliquez sur un organisme dans le monde pour afficher ses caractéristiques.'}</p>}
     </div>
-    <div className="inspector-footer"><span className="status-ring" />{extinct ? 'POPULATION ÉTEINTE' : `MONDE ${world.paused ? 'STATIONNAIRE' : 'EN ÉVOLUTION'}`}</div>
+    <div className="inspector-footer"><span className="status-ring" />{loading ? 'INITIALISATION' : extinct ? 'POPULATION ÉTEINTE' : `MONDE ${world.paused ? 'STATIONNAIRE' : 'EN ÉVOLUTION'}`}</div>
   </aside>
 }
 
