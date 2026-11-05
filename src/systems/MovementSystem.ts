@@ -1,6 +1,7 @@
 import type { SeededRandom } from '../core/SeededRandom'
 import type { WorldConfig } from '../core/types'
 import type { Organism } from '../organisms/Organism'
+import { cellBoundaryExtents } from '../organisms/CellGeometry'
 
 /** Applies bounded random turns, then moves and reflects at the rectangular world edges. */
 export class MovementSystem {
@@ -12,8 +13,9 @@ export class MovementSystem {
       organism.x += Math.cos(organism.direction) * organism.speed * deltaTime
       organism.y += Math.sin(organism.direction) * organism.speed * deltaTime
 
-      const minX = organism.radius
-      const maxX = width - organism.radius
+      const extents = cellBoundaryExtents(organism)
+      const minX = Math.min(extents.x, width / 2)
+      const maxX = Math.max(width - extents.x, width / 2)
       if (organism.x < minX) {
         organism.x = minX
         organism.direction = Math.PI - organism.direction
@@ -21,8 +23,8 @@ export class MovementSystem {
         organism.x = maxX
         organism.direction = Math.PI - organism.direction
       }
-      const minY = organism.radius
-      const maxY = height - organism.radius
+      const minY = Math.min(extents.y, height / 2)
+      const maxY = Math.max(height - extents.y, height / 2)
       if (organism.y < minY) {
         organism.y = minY
         organism.direction = -organism.direction

@@ -62,6 +62,24 @@ export class WorldRenderer {
     context.stroke()
 
     const viewport = { x: width, y: height }
+    const selectedCell = world.organisms.find(organism => organism.id === selectedOrganismId)
+    const selectedColonyId = selectedCell?.colonyId
+    const organismsById = new Map(world.organisms.map(organism => [organism.id, organism]))
+    for (const link of world.links) {
+      const a = organismsById.get(link.cellAId)
+      const b = organismsById.get(link.cellBId)
+      if (!a || !b) continue
+      const start = camera.worldToScreen(a, viewport)
+      const end = camera.worldToScreen(b, viewport)
+      const highlighted = selectedColonyId !== undefined && a.colonyId === selectedColonyId
+      context.strokeStyle = highlighted ? palette.selection : palette.boundary
+      context.lineWidth = highlighted ? 2 : 1.2
+      context.beginPath()
+      context.moveTo(start.x, start.y)
+      context.lineTo(end.x, end.y)
+      context.stroke()
+    }
+
     for (const resource of world.resources) {
       const point = camera.worldToScreen(resource, viewport)
       const radius = Math.max(1.5, resource.radius * WORLD_SCALE * zoom)
@@ -75,30 +93,44 @@ export class WorldRenderer {
       const point = camera.worldToScreen(organism, viewport)
       const radius = Math.max(2, organism.radius * WORLD_SCALE * zoom)
       const isSelected = organism.id === selectedOrganismId
+      const isInSelectedColony = selectedColonyId !== undefined && organism.colonyId === selectedColonyId
       const energyRatio = organism.energy / Math.max(organism.maxEnergy, Number.EPSILON)
       context.fillStyle = energyRatio < 0.25 ? palette.organismCritical : energyRatio < 0.5 ? palette.organismLow : palette.organism
+      const aspect = organism.genome.aspectRatio
+      const radiusX = radius * Math.sqrt(aspect)
+      const radiusY = radius / Math.sqrt(aspect)
+      context.save()
+      context.translate(point.x, point.y)
+      context.rotate(organism.direction)
       context.beginPath()
-      context.arc(point.x, point.y, radius, 0, Math.PI * 2)
+      context.ellipse(0, 0, radiusX, radiusY, 0, 0, Math.PI * 2)
       context.fill()
       context.strokeStyle = palette.organismStroke
       context.lineWidth = 1
       context.beginPath()
-      context.arc(point.x, point.y, radius, 0, Math.PI * 2)
+      context.ellipse(0, 0, radiusX, radiusY, 0, 0, Math.PI * 2)
       context.stroke()
+      context.globalAlpha = 0.55
+      context.beginPath()
+      context.ellipse(0, 0, radiusX * 0.78, radiusY * 0.78, 0, 0, Math.PI * 2)
+      context.stroke()
+      context.restore()
       context.beginPath()
       context.moveTo(point.x, point.y)
-      context.lineTo(point.x + Math.cos(organism.direction) * (radius + 4), point.y + Math.sin(organism.direction) * (radius + 4))
+      context.lineTo(point.x + Math.cos(organism.direction) * (Math.max(radiusX, radiusY) + 4), point.y + Math.sin(organism.direction) * (Math.max(radiusX, radiusY) + 4))
       context.strokeStyle = palette.direction
       context.stroke()
-      if (isSelected) {
+      if (isInSelectedColony) {
         context.strokeStyle = palette.selection
         context.lineWidth = 1
         context.beginPath()
-        context.arc(point.x, point.y, radius + 3, 0, Math.PI * 2)
+        context.arc(point.x, point.y, Math.max(radiusX, radiusY) + (isSelected ? 4 : 2), 0, Math.PI * 2)
         context.stroke()
+      }
+      if (isSelected) {
         context.fillStyle = palette.selection
         context.font = '10px ui-monospace, monospace'
-        context.fillText(organism.id, point.x + radius + 7, point.y - radius - 4)
+        context.fillText(organism.id, point.x + Math.max(radiusX, radiusY) + 7, point.y - Math.max(radiusX, radiusY) - 4)
       }
     }
     context.fillStyle = palette.label

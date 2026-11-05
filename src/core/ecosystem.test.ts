@@ -10,6 +10,10 @@ import { MovementSystem } from '../systems/MovementSystem'
 import { FeedingSystem } from '../systems/FeedingSystem'
 import { MetabolismSystem } from '../systems/MetabolismSystem'
 import { LifecycleSystem } from '../systems/LifecycleSystem'
+import { ReproductionSystem } from '../systems/ReproductionSystem'
+import { AdhesionSystem } from '../systems/AdhesionSystem'
+import { getColonyMembership } from '../organisms/CellColony'
+import { CellPhysicsSystem } from '../systems/CellPhysicsSystem'
 
 const config = (patch: Partial<WorldConfig> = {}): WorldConfig => ({ ...WORLD_DEFAULTS, initialOrganismCount: 5, initialFoodCount: 8, maxFoodCount: 12, ...patch })
 const definition = (id = 'test-world', seed = 12345, settings = config()) => ({ id, name: id, width: 500, height: 400, seed, config: settings })
@@ -173,5 +177,213 @@ describe('ecosystem determinism and systems', () => {
   it('reports an empty extinct population with zero averages', () => {
     const simulation = new Simulation(definition('extinct', 7, config({ initialOrganismCount: 0, initialFoodCount: 0 })))
     expect(simulation.world.snapshot().statistics).toMatchObject({ population: 0, averageEnergy: 0, averageAge: 0, initialPopulation: 0 })
+  })
+
+  it('inherits adhesion and morphology genes through cell division', () => {
+    const settings = config({ initialOrganismCount: 0, initialFoodCount: 0, mutationRate: 0, divisionEnergyThreshold: 90 })
+    const simulation = new Simulation(definition('inheritance', 3, settings))
+    const parent = new Organism('parent', 100, 100, 0, 0, 5, 100, 100, 0, 0, { adhesion: 0.8, aspectRatio: 1.4 }, 2)
+    simulation.world.organisms.push(parent)
+    simulation.world.nextOrganismNumber = 1
+    expect(ReproductionSystem.update(simulation.world, new SeededRandom(10))).toBe(1)
+    const daughter = simulation.world.organisms[1]
+    expect(daughter.generation).toBe(3)
+    expect(daughter.genome).toEqual(parent.genome)
+    expect(parent.energy + daughter.energy).toBe(100)
+  })
+
+  it('mutates heritable genes at the configured rate and bounds', () => {
+    const settings = config({ initialOrganismCount: 0, mutationRate: 1, mutationStep: 0.2, divisionEnergyThreshold: 90 })
+    const simulation = new Simulation(definition('mutation', 4, settings))
+    const parent = new Organism('parent', 100, 100, 0, 0, 5, 100, 100, 0, 0, { adhesion: 0.5, aspectRatio: 1 }, 0)
+    simulation.world.organisms.push(parent)
+    ReproductionSystem.update(simulation.world, new SeededRandom(18))
+    const child = simulation.world.organisms[1]
+    expect(child.genome).not.toEqual(parent.genome)
+    expect(child.genome.adhesion).toBeGreaterThanOrEqual(0)
+    expect(child.genome.adhesion).toBeLessThanOrEqual(1)
+    expect(child.genome.aspectRatio).toBeGreaterThanOrEqual(0.5)
+    expect(child.genome.aspectRatio).toBeLessThanOrEqual(2)
+  })
+
+  it('creates colonies only through division and derives membership from bonds', () => {
+    const simulation = new Simulation(definition('colony', 8, config({ initialOrganismCount: 0, mutationRate: 0, divisionEnergyThreshold: 90 })))
+    const parent = new Organism('parent', 100, 100, 0, 0, 5, 100, 100, 0, 0, { adhesion: 1, aspectRatio: 1 }, 0)
+    simulation.world.organisms.push(parent)
+    ReproductionSystem.update(simulation.world, new SeededRandom(2))
+    expect(simulation.world.links).toHaveLength(1)
+    const child = simulation.world.organisms[1]
+    expect(getColonyMembership(simulation.world.organisms, simulation.world.links).get(child.id)?.size).toBe(2)
+    expect(simulation.world.snapshot().statistics.colonies).toBe(1)
+  })
+
+  it('constrains linked cells near their bond length and breaks stretched links', () => {
+    const simulation = new Simulation(definition('constraint', 3, config({ initialOrganismCount: 0 })))
+    const first = new Organism('a', 100, 100, 0, 0, 5, 50)
+    const second = new Organism('b', 125, 100, 0, 0, 5, 50)
+    simulation.world.organisms.push(first, second)
+    simulation.world.links.push({ id: 'a::b', cellAId: 'a', cellBId: 'b', restLength: 10, breakDistance: 30, strength: 0.5 })
+    AdhesionSystem.constrain(simulation.world)
+    expect(Math.hypot(second.x - first.x, second.y - first.y)).toBeCloseTo(10.1)
+    second.x = 150
+    expect(AdhesionSystem.constrain(simulation.world)).toBe(1)
+    expect(simulation.world.links).toHaveLength(0)
+  })
+
+  it('charges attached cells for bond maintenance without granting a colony energy bonus', () => {
+    const settings = config({ initialOrganismCount: 0, adhesionEnergyCost: 0.5 })
+    const alone = new Organism('alone', 20, 20, 0, 0, 5, 10, 100, 0, 0)
+    const first = new Organism('a', 50, 50, 0, 0, 5, 10, 100, 0, 0)
+    const second = new Organism('b', 60, 50, 0, 0, 5, 10, 100, 0, 0)
+    MetabolismSystem.update([alone], 1)
+    MetabolismSystem.update([first, second], 1, [{ id: 'a::b', cellAId: 'a', cellBId: 'b', restLength: 10, breakDistance: 20, strength: 1 }], settings.adhesionEnergyCost)
+    expect(alone.energy).toBe(10)
+    expect(first.energy).toBe(9.5)
+    expect(second.energy).toBe(9.5)
+  })
+
+  it('retains singleton unicellular cells and deterministic colony development', () => {
+    const settings = config({ initialOrganismCount: 1, initialFoodCount: 0, initialEnergy: 100, baseMetabolismRate: 0, movementEnergyCost: 0, organismSpeed: 0, turnRate: 0, divisionEnergyThreshold: 99, mutationRate: 0 })
+    const first = new Simulation(definition('lineage', 92, settings))
+    const second = new Simulation(definition('lineage', 92, settings))
+    first.step()
+    second.step()
+    expect(first.world.snapshot()).toEqual(second.world.snapshot())
+    expect(first.world.organisms).toHaveLength(2)
+    expect(first.world.organisms[0].generation).toBe(0)
+    expect(first.world.organisms[1].generation).toBe(1)
+    expect(new Simulation(definition('unicellular', 12, config({ initialOrganismCount: 1 }))).world.snapshot().statistics.colonies).toBe(0)
+  })
+
+  it('runs a population of a thousand cells through repeated ticks', () => {
+    const simulation = new Simulation(definition('scale', 190, config({ initialOrganismCount: 1_000, initialFoodCount: 0, baseMetabolismRate: 0, mutationRate: 0 })))
+    for (let tick = 0; tick < 30; tick += 1) simulation.step()
+    expect(simulation.world.tick).toBe(30)
+    expect(simulation.world.organisms).toHaveLength(1_000)
+  })
+
+  it('resolves overlap using oriented cell geometry and bounded correction passes', () => {
+    const first = new Organism('ellipse-a', 100, 100, 0, 0, 5, 50, 100, 0, 0, { adhesion: 0, aspectRatio: 2 })
+    const second = new Organism('ellipse-b', 101, 100, 0, 0, 5, 50, 100, 0, 0, { adhesion: 0, aspectRatio: 0.5 })
+    const result = CellPhysicsSystem.resolve([first, second], 300, 300)
+    expect(result.resolvedPairs).toBeGreaterThan(0)
+    expect(Number.isFinite(first.x + second.x)).toBe(true)
+    expect(Math.hypot(second.x - first.x, second.y - first.y)).toBeGreaterThan(8)
+  })
+
+  it('uses the spatial hash to avoid all-pairs work for sparse populations', () => {
+    const cells = Array.from({ length: 1_000 }, (_, index) => new Organism(
+      'sparse-' + index,
+      20 + index % 50 * 150,
+      20 + Math.floor(index / 50) * 150,
+      0, 0, 5, 50,
+    ))
+    const result = CellPhysicsSystem.resolve(cells, 8_000, 8_000)
+    expect(result.candidatePairs).toBeLessThan(1_000)
+    expect(result.resolvedPairs).toBe(0)
+  })
+
+  it('blocks nutrient access for a covered cell while leaving the exposed cell able to feed', () => {
+    const settings = config({ initialOrganismCount: 0 })
+    const covered = new Organism('covered', 100, 100, 0, 0, 5, 10)
+    const exposed = new Organism('exposed', 108, 100, 0, 0, 5, 10)
+    const resource = new FoodResource('food', 110, 100, 5, 30)
+    const resources = [resource]
+    FeedingSystem.update([covered, exposed], resources, settings)
+    expect(covered.energy).toBe(10)
+    expect(exposed.energy).toBe(40)
+    expect(resources).toHaveLength(0)
+  })
+
+  it('tracks population composition, morphology and bounded history', () => {
+    const simulation = new Simulation(definition('stats', 1, config({ initialOrganismCount: 0 })))
+    const isolated = new Organism('isolated', 10, 10, 0, 0, 5, 30, 100, 0, 0, { adhesion: 0.4, aspectRatio: 2 }, 3)
+    const colonyA = new Organism('colony-a', 30, 30, 0, 0, 5, 30, 100, 0, 0, { adhesion: 0.8, aspectRatio: 1 }, 1)
+    const colonyB = new Organism('colony-b', 40, 30, 0, 0, 5, 30, 100, 0, 0, { adhesion: 0.6, aspectRatio: 1 }, 2)
+    simulation.world.organisms.push(isolated, colonyA, colonyB)
+    simulation.world.links.push({ id: 'bond', cellAId: colonyA.id, cellBId: colonyB.id, restLength: 10, breakDistance: 15, strength: 0.7 })
+    const stats = simulation.world.snapshot().statistics
+    expect(stats).toMatchObject({ population: 3, isolatedCells: 1, colonies: 1, averageColonySize: 2, largestColonySize: 2, maxGeneration: 3 })
+    expect(stats.averageAdhesion).toBeCloseTo(0.6)
+    expect(stats.averageElongation).toBeCloseTo(4 / 3)
+    simulation.world.divisions = 10
+    simulation.world.totalDeaths = 5
+    simulation.world.simulatedTime = 10
+    expect(simulation.world.snapshot().statistics).toMatchObject({ birthRate: 1, mortalityRate: 0.5 })
+    for (let sample = 1; sample <= 605; sample += 1) {
+      simulation.world.simulatedTime = sample
+      simulation.world.recordHistorySample()
+    }
+    expect(simulation.world.history).toHaveLength(600)
+    expect(simulation.world.history[0].time).toBe(6)
+  })
+
+  it('keeps linked colonies finite and bonded during repeated contact resolution', () => {
+    const simulation = new Simulation(definition('stable-bond', 5, config({ initialOrganismCount: 0 })))
+    const a = new Organism('a', 100, 100, 0, 0, 5, 50)
+    const b = new Organism('b', 110.1, 100, 0, 0, 5, 50)
+    const obstacle = new Organism('obstacle', 111, 100, Math.PI / 2, 0, 5, 50)
+    simulation.world.organisms.push(a, b, obstacle)
+    simulation.world.links.push({ id: 'a::b', cellAId: 'a', cellBId: 'b', restLength: 10.1, breakDistance: 20, strength: 0.5 })
+    for (let step = 0; step < 20; step += 1) {
+      CellPhysicsSystem.resolve(simulation.world.organisms, simulation.world.width, simulation.world.height)
+      AdhesionSystem.constrain(simulation.world)
+      CellPhysicsSystem.resolve(simulation.world.organisms, simulation.world.width, simulation.world.height)
+    }
+    expect(simulation.world.links).toHaveLength(1)
+    expect(simulation.world.organisms.every(cell => Number.isFinite(cell.x) && Number.isFinite(cell.y))).toBe(true)
+  })
+
+  it('lets elongated morphology improve contact access only along its long axis', () => {
+    const settings = config({ initialOrganismCount: 0 })
+    const elongated = new Organism('elongated', 100, 100, 0, 0, 5, 10, 100, 0, 0, { adhesion: 0, aspectRatio: 2 })
+    const round = new Organism('round', 100, 100, 0, 0, 5, 10, 100, 0, 0, { adhesion: 0, aspectRatio: 1 })
+    const elongatedFood = [new FoodResource('food-e', 108.5, 100, 2, 10)]
+    const roundFood = [new FoodResource('food-r', 108.5, 100, 2, 10)]
+    FeedingSystem.update([elongated], elongatedFood, settings)
+    FeedingSystem.update([round], roundFood, settings)
+    expect(elongated.energy).toBe(20)
+    expect(round.energy).toBe(10)
+    expect(roundFood).toHaveLength(1)
+  })
+
+  it('makes colony translation emerge from constrained per-cell motion rather than a group speed bonus', () => {
+    const settings = config({ initialOrganismCount: 0, organismSpeed: 10, turnRate: 0 })
+    const simulation = new Simulation(definition('colony-motion', 1, settings))
+    const left = new Organism('left', 90, 100, 0, 10, 5, 50)
+    const right = new Organism('right', 100.1, 100, Math.PI, 10, 5, 50)
+    simulation.world.organisms.push(left, right)
+    simulation.world.links.push({ id: 'left::right', cellAId: 'left', cellBId: 'right', restLength: 10.1, breakDistance: 20, strength: 0.5 })
+    const before = (left.x + right.x) / 2
+    MovementSystem.update([left, right], simulation.world.width, simulation.world.height, settings, new SeededRandom(1), 0.1)
+    CellPhysicsSystem.resolve([left, right], simulation.world.width, simulation.world.height)
+    AdhesionSystem.constrain(simulation.world)
+    CellPhysicsSystem.resolve([left, right], simulation.world.width, simulation.world.height)
+    const colonyDisplacement = Math.abs((left.x + right.x) / 2 - before)
+    const solitary = new Organism('solo', 200, 100, 0, 10, 5, 50)
+    MovementSystem.update([solitary], simulation.world.width, simulation.world.height, settings, new SeededRandom(1), 0.1)
+    expect(colonyDisplacement).toBeLessThan(Math.abs(solitary.x - 200))
+  })
+
+  it('continues a reproducing population deterministically for thousands of fixed ticks', () => {
+    const settings = config({
+      initialOrganismCount: 10,
+      initialFoodCount: 0,
+      initialEnergy: 100,
+      baseMetabolismRate: 0,
+      movementEnergyCost: 0,
+      adhesionEnergyCost: 0,
+      organismSpeed: 5,
+      divisionEnergyThreshold: 90,
+      maximumPopulation: 20,
+      mutationRate: 0,
+    })
+    const simulation = new Simulation(definition('long-run', 33, settings))
+    for (let tick = 0; tick < 6_000; tick += 1) simulation.step()
+    expect(simulation.world.tick).toBe(6_000)
+    expect(simulation.world.organisms).toHaveLength(20)
+    expect(simulation.world.organisms.every(cell => Number.isFinite(cell.x) && Number.isFinite(cell.energy))).toBe(true)
+    expect(simulation.world.history.length).toBeLessThanOrEqual(600)
+    expect(simulation.world.divisions).toBe(10)
   })
 })

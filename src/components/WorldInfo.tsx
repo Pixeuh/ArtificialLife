@@ -1,4 +1,4 @@
-import type { WorldSnapshot } from '../core/types'
+import type { EvolutionSample, WorldSnapshot } from '../core/types'
 
 export function WorldInfo({ world, selectedOrganismId, deathNotice = false }: { world: WorldSnapshot; selectedOrganismId: string | null; deathNotice?: boolean }) {
   const selected = world.organisms.find(organism => organism.id === selectedOrganismId)
@@ -16,11 +16,29 @@ export function WorldInfo({ world, selectedOrganismId, deathNotice = false }: { 
       <div><dt>Pas de simulation</dt><dd className="mono">{world.config.tickDuration.toFixed(3)} <small>s</small></dd></div>
       <div><dt>Métabolisme de base</dt><dd className="mono">{world.config.baseMetabolismRate} <small>énergie/s</small></dd></div>
       <div><dt>Coût déplacement</dt><dd className="mono">{world.config.movementEnergyCost} <small>énergie/u</small></dd></div>
+      <div><dt>Énergie par ressource</dt><dd className="mono">{world.config.foodEnergy}</dd></div>
+      <div><dt>Régénération</dt><dd className="mono">{world.config.foodRegenerationRate} <small>ressources/s</small></dd></div>
+      <div><dt>Seuil de division</dt><dd className="mono">{world.config.divisionEnergyThreshold} <small>énergie</small></dd></div>
+      <div><dt>Population maximale</dt><dd className="mono">{world.config.maximumPopulation}</dd></div>
+      <div><dt>Taux de mutation</dt><dd className="mono">{(world.config.mutationRate * 100).toFixed(1)} <small>%/division</small></dd></div>
+      <div><dt>Amplitude mutation</dt><dd className="mono">{world.config.mutationStep.toFixed(2)} <small>par variation</small></dd></div>
+      <div><dt>Entretien d'adhésion</dt><dd className="mono">{world.config.adhesionEnergyCost} <small>énergie/s/lien/cellule</small></dd></div>
     </dl>
     <div className="info-divider" />
     <div className="section-kicker">ÉCOSYSTÈME</div>
     {extinct && <div className="extinction-state" role="status">Population éteinte</div>}
-    <div className="tick-row"><span>Population vivante</span><strong className="mono">{world.statistics.population.toLocaleString('fr-FR')}</strong></div>
+    <div className="tick-row"><span>Cellules vivantes</span><strong className="mono">{world.statistics.population.toLocaleString('fr-FR')}</strong></div>
+    <div className="tick-row"><span>Colonies multicellulaires</span><strong className="mono">{world.statistics.colonies.toLocaleString('fr-FR')}</strong></div>
+    <div className="tick-row"><span>Divisions</span><strong className="mono">{world.statistics.divisions.toLocaleString('fr-FR')}</strong></div>
+    <div className="tick-row"><span>Cellules isolées</span><strong className="mono">{world.statistics.isolatedCells.toLocaleString('fr-FR')}</strong></div>
+    <div className="tick-row"><span>Taille moyenne des colonies</span><strong className="mono">{world.statistics.averageColonySize.toFixed(2)}</strong></div>
+    <div className="tick-row"><span>Plus grande colonie</span><strong className="mono">{world.statistics.largestColonySize}</strong></div>
+    <div className="tick-row"><span>Adhésion moyenne</span><strong className="mono">{world.statistics.averageAdhesion.toFixed(3)}</strong></div>
+    <div className="tick-row"><span>Allongement moyen</span><strong className="mono">{world.statistics.averageElongation.toFixed(2)}</strong></div>
+    <div className="tick-row"><span>Génération maximale</span><strong className="mono">{world.statistics.maxGeneration}</strong></div>
+    <div className="tick-row"><span>Naissances moyennes</span><strong className="mono">{world.statistics.birthRate.toFixed(3)}/s</strong></div>
+    <div className="tick-row"><span>Mortalité moyenne</span><strong className="mono">{world.statistics.mortalityRate.toFixed(3)}/s</strong></div>
+    <EvolutionChart history={world.history} />
     <div className="tick-row"><span>Population initiale</span><strong className="mono">{world.statistics.initialPopulation.toLocaleString('fr-FR')}</strong></div>
     <div className="tick-row"><span>Décès</span><strong className="mono">{world.statistics.totalDeaths.toLocaleString('fr-FR')}</strong></div>
     <div className="tick-row"><span>Décès par famine</span><strong className="mono">{world.statistics.starvationDeaths.toLocaleString('fr-FR')}</strong></div>
@@ -37,17 +55,47 @@ export function WorldInfo({ world, selectedOrganismId, deathNotice = false }: { 
       <div className="section-kicker">{selected ? 'ORGANISME SÉLECTIONNÉ' : 'INSPECTION'}</div>
       {selected ? <>
         <strong className="selected-id">{selected.id}</strong>
+        <div className="tick-row"><span>Cellules dans la colonie</span><strong className="mono">{selected.colonySize}</strong></div>
+        <div className="tick-row"><span>Colonie</span><strong className="mono">{selected.colonyId}</strong></div>
         <div className="tick-row"><span>Âge</span><strong className="mono">{selected.age.toFixed(2)} s</strong></div>
+        <div className="tick-row"><span>Génération</span><strong className="mono">{selected.generation}</strong></div>
         <div className="tick-row"><span>Énergie</span><strong className="mono">{selected.energy.toFixed(1)} / {selected.maxEnergy.toFixed(1)}</strong></div>
         <div className="energy-meter" aria-label={`Énergie ${Math.round(energyRatio * 100)} %`}><span className={energyRatio < 0.25 ? 'critical' : energyRatio < 0.5 ? 'low' : ''} style={{ width: `${energyRatio * 100}%` }} /></div>
         <div className="tick-row"><span>Vitesse</span><strong className="mono">{selected.speed.toFixed(1)} u/s</strong></div>
         <div className="tick-row"><span>Métabolisme de base</span><strong className="mono">{selected.baseMetabolismRate}/s</strong></div>
         <div className="tick-row"><span>Coût déplacement</span><strong className="mono">{selected.movementEnergyCost}/u</strong></div>
+        <div className="tick-row"><span>Adhésion génétique</span><strong className="mono">{selected.genome.adhesion.toFixed(3)}</strong></div>
+        <div className="tick-row"><span>Forme (rapport axes)</span><strong className="mono">{selected.genome.aspectRatio.toFixed(2)}</strong></div>
         <div className="tick-row"><span>Nourriture consommée</span><strong className="mono">{selected.foodConsumed}</strong></div>
       </> : <p className="selection-hint">{deathNotice ? 'Organisme mort de faim.' : 'Cliquez sur un organisme dans le monde pour afficher ses caractéristiques.'}</p>}
     </div>
     <div className="inspector-footer"><span className="status-ring" />{extinct ? 'POPULATION ÉTEINTE' : `MONDE ${world.paused ? 'STATIONNAIRE' : 'EN ÉVOLUTION'}`}</div>
   </aside>
+}
+
+function EvolutionChart({ history }: { history: readonly EvolutionSample[] }) {
+  return <div className="evolution-chart" aria-label="Historique de la population et des colonies">
+    <div className="chart-label"><span>POPULATION</span><strong>{history.at(-1)?.population ?? 0}</strong></div>
+    <svg viewBox="0 0 100 24" preserveAspectRatio="none" role="img" aria-label="Évolution de la population">
+      <polyline points={chartPoints(history, sample => sample.population)} />
+    </svg>
+    <div className="chart-label"><span>COLONIES</span><strong>{history.at(-1)?.colonies ?? 0}</strong></div>
+    <svg viewBox="0 0 100 24" preserveAspectRatio="none" role="img" aria-label="Évolution du nombre de colonies">
+      <polyline className="colonies" points={chartPoints(history, sample => sample.colonies)} />
+    </svg>
+    <small>1 échantillon/s · rétention max. 10 min</small>
+  </div>
+}
+
+function chartPoints(history: readonly EvolutionSample[], value: (sample: EvolutionSample) => number): string {
+  if (history.length === 0) return ''
+  const values = history.map(value)
+  const maximum = Math.max(1, ...values)
+  return values.map((sampleValue, index) => {
+    const x = history.length === 1 ? 100 : index / (history.length - 1) * 100
+    const y = 22 - sampleValue / maximum * 20
+    return x.toFixed(1) + ',' + y.toFixed(1)
+  }).join(' ')
 }
 
 function formatTime(seconds: number): string {

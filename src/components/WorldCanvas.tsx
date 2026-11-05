@@ -79,9 +79,16 @@ export function WorldCanvas({ world, theme, selectedOrganismId, onSelectOrganism
       for (const organism of worldRef.current.organisms) {
         const dx = organism.x - worldPoint.x
         const dy = organism.y - worldPoint.y
+        const cosine = Math.cos(organism.direction)
+        const sine = Math.sin(organism.direction)
+        const localX = dx * cosine + dy * sine
+        const localY = -dx * sine + dy * cosine
+        const padding = 12 / (WORLD_SCALE * cameraRef.current.zoom)
+        const radiusX = organism.radius * Math.sqrt(organism.genome.aspectRatio) + padding
+        const radiusY = organism.radius / Math.sqrt(organism.genome.aspectRatio) + padding
+        const ellipseDistance = (localX / radiusX) ** 2 + (localY / radiusY) ** 2
         const distance = dx * dx + dy * dy
-        const hitRadius = Math.max(organism.radius, 12 / (WORLD_SCALE * cameraRef.current.zoom))
-        if (distance <= hitRadius * hitRadius && distance < nearestDistance) { nearestId = organism.id; nearestDistance = distance }
+        if (ellipseDistance <= 1 && distance < nearestDistance) { nearestId = organism.id; nearestDistance = distance }
       }
       onSelectOrganism(nearestId)
     }}

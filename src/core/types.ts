@@ -12,7 +12,28 @@ export interface WorldConfig {
   readonly maxEnergy: number
   readonly baseMetabolismRate: number
   readonly movementEnergyCost: number
+  readonly divisionEnergyThreshold: number
+  readonly mutationRate: number
+  readonly mutationStep: number
+  readonly adhesionEnergyCost: number
+  readonly maximumPopulation: number
   readonly turnRate: number
+}
+
+export interface CellGenome {
+  /** Heritable adhesion probability and bond strength, in [0, 1]. */
+  readonly adhesion: number
+  /** Heritable body aspect ratio, in [0.5, 2]. */
+  readonly aspectRatio: number
+}
+
+export interface CellLinkSnapshot {
+  readonly id: string
+  readonly cellAId: string
+  readonly cellBId: string
+  readonly restLength: number
+  readonly breakDistance: number
+  readonly strength: number
 }
 
 export interface OrganismSnapshot {
@@ -29,6 +50,10 @@ export interface OrganismSnapshot {
   readonly movementEnergyCost: number
   readonly active: boolean
   readonly foodConsumed: number
+  readonly generation: number
+  readonly genome: CellGenome
+  readonly colonyId: string
+  readonly colonySize: number
 }
 
 export interface FoodSnapshot {
@@ -48,6 +73,30 @@ export interface WorldStatistics {
   readonly initialPopulation: number
   readonly totalDeaths: number
   readonly starvationDeaths: number
+  readonly divisions: number
+  readonly colonies: number
+  readonly isolatedCells: number
+  readonly averageColonySize: number
+  readonly largestColonySize: number
+  readonly averageAdhesion: number
+  readonly averageElongation: number
+  readonly maxGeneration: number
+  readonly birthRate: number
+  readonly mortalityRate: number
+}
+
+export interface EvolutionSample {
+  readonly time: number
+  readonly population: number
+  readonly isolatedCells: number
+  readonly colonies: number
+  readonly averageColonySize: number
+  readonly largestColonySize: number
+  readonly averageAdhesion: number
+  readonly averageElongation: number
+  readonly maxGeneration: number
+  readonly birthRate: number
+  readonly mortalityRate: number
 }
 
 export interface WorldDefinition {
@@ -67,6 +116,8 @@ export interface WorldSnapshot extends WorldDefinition {
   readonly config: WorldConfig
   readonly organisms: readonly OrganismSnapshot[]
   readonly resources: readonly FoodSnapshot[]
+  readonly links: readonly CellLinkSnapshot[]
+  readonly history: readonly EvolutionSample[]
   readonly statistics: WorldStatistics
 }
 
@@ -90,5 +141,10 @@ export const WORLD_DEFAULTS: WorldConfig = {
   maxEnergy: 100,
   baseMetabolismRate: 0.08,
   movementEnergyCost: 0.0005,
+  divisionEnergyThreshold: 95,
+  mutationRate: 0.03,
+  mutationStep: 0.12,
+  adhesionEnergyCost: 0.01,
+  maximumPopulation: 2_000,
   turnRate: 0.65,
 }

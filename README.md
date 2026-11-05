@@ -1,6 +1,6 @@
-# Artificial Life — version 0.3
+# Artificial Life — version 0.5
 
-Laboratoire de simulation 2D avec React, TypeScript strict, Vite, Canvas 2D et un worker indépendant par monde. La V0.3 ajoute les coûts énergétiques, la famine, la mortalité et les statistiques historiques à l'écosystème déterministe.
+Simulation 2D React + TypeScript strict + Vite, avec Canvas et un worker isolé par monde. La V0.5 ajoute les contacts physiques entre cellules et les effets de la morphologie sur les collisions, l'accès aux ressources et le déplacement des colonies.
 
 ## Démarrer et vérifier
 
@@ -11,27 +11,26 @@ npm test
 npm run build
 ```
 
-## Organisation
+## Mécanismes
 
-- `src/core/` : état, configuration, snapshots, horloge fixe et orchestration.
-- `src/organisms/` : données et création déterministe des organismes.
-- `src/environment/` : ressources alimentaires et régénération.
-- `src/systems/` : déplacement, alimentation, métabolisme et cycle de vie.
-- `src/workers/` : protocole typé et boucle de simulation par monde.
-- `src/rendering/`, `src/components/` : Canvas, caméra et interface.
+- Les cellules sont des ellipses orientées dont les demi-axes viennent du trait génétique `aspectRatio`, avec une aire approximativement constante.
+- Une grille spatiale répartit les cellules et ne propose au solveur que les paires des cases voisines. Le solveur estime le contact par les rayons de support des ellipses, corrige les positions en plusieurs passes relaxées et respecte les bords du monde.
+- Les liens parent-descendance restent des contraintes distinctes. Après les contacts, le système rétablit leur longueur cible, puis réapplique les contacts pour limiter les recouvrements.
+- Une cellule consomme une ressource seulement si elle la touche et si aucune autre cellule ne bloque la ligne entre elle et le nutriment. La portée du contact dépend de l'orientation et de la forme de l'ellipse. L'effet est géométrique : une cellule allongée peut atteindre plus loin le long de son axe et moins loin perpendiculairement.
+- Chaque cellule continue à se déplacer avec son propre mouvement actif. Les liaisons et les collisions déterminent ensuite le mouvement collectif ; aucune vitesse supplémentaire n'est accordée aux colonies.
 
-Les deux mondes ont leurs propres workers, seed, configuration, état et commandes. Les taux de métabolisme se règlent depuis Paramètres et s'appliquent à la réinitialisation. Les thèmes clair et sombre sont conservés, ainsi que le choix utilisateur.
+Les cellules liées gardent leur métabolisme individuel et paient toujours l'entretien des liaisons. La reproduction partage l'énergie existante entre parent et fille. La morphologie peut donc modifier les contacts et la nourriture accessible sans donner de bonus énergétique direct aux colonies.
 
-## Règles énergétiques
+## Statistiques et expériences
 
-Les valeurs par défaut sont `baseMetabolismRate = 0.08` énergie/s et `movementEnergyCost = 0.0005` énergie/unité. À 22 unités/s, le coût total est d'environ 0.091 énergie/s : une réserve de 60 dure environ 11 minutes sans repas. Une ressource apporte 30 unités d'énergie, plafonnées à la capacité individuelle de 100. Ces valeurs permettent d'observer les organismes avant famine tout en rendant la nourriture utile et l'extinction possible. Aucun organisme ne reçoit de bonus de survie.
+L'inspecteur affiche population, cellules isolées, colonies multicellulaires, tailles moyenne et maximale des colonies, adhésion moyenne, allongement moyen, génération maximale, divisions, décès et taux moyens de naissance/mortalité. Les taux sont des moyennes cumulées depuis le début du monde. Deux graphiques suivent population et colonies à raison d'un échantillon par seconde, avec au plus 600 échantillons (10 minutes simulées).
 
-Chaque tick applique cet ordre stable : retrait des organismes déjà non viables, déplacement et vieillissement, alimentation, coûts métaboliques, retrait des morts, régénération des ressources, puis avancement de l'horloge. Une ressource est attribuée au premier organisme en ordre stable qui la touche. Les compteurs de nourriture consommée et de décès sont conservés dans l'état du monde après la disparition des organismes.
+Chaque monde conserve sa seed et ses paramètres. Les réglages incluent la quantité et la régénération des ressources, leur énergie, le seuil de division, la mutation, l'entretien de l'adhésion et la population maximale. Pour comparer une condition, garder la seed et les autres paramètres fixes, modifier une seule variable, puis répéter avec plusieurs seeds. Une différence sur un seul monde ne démontre pas un avantage évolutif général.
 
-Le coût de déplacement est calculé depuis la distance commandée (`vitesse × deltaTime`), même si une limite du monde réduit le déplacement réellement effectué. Un organisme de vitesse nulle ne paie donc que le métabolisme de base. Les dépenses ne dépendent que du temps simulé ; ×2, ×5 et ×10 exécutent davantage de ticks dans le même temps réel sans changer le calcul d'un tick.
+Hypothèses à étudier : des ressources rares pourraient amplifier le coût d'être masqué par d'autres cellules ; un apport abondant pourrait rendre l'entretien des liens plus neutre ; une géométrie allongée peut améliorer l'accès selon son orientation, mais réduire les contacts dans l'axe court et modifier le mouvement du groupe. Ces conséquences dépendent de la densité et de la distribution spatiale ; elles ne sont pas garanties.
 
-L'énergie initiale supérieure à `maxEnergy` est plafonnée à cette capacité. Les paramètres négatifs sont ramenés à zéro et les valeurs non finies utilisent la valeur de repli définie par le moteur. L'énergie d'un organisme reste toujours finie et dans l'intervalle `[0, maxEnergy]`.
+## Limites
 
-## Limites et suite
+Le solveur est un modèle positionnel léger, sans inertie ni énergie cinétique. Les contacts sont calculés par support elliptique et quelques passes, donc les configurations extrêmement denses ou un monde plus petit que ses cellules peuvent conserver des recouvrements résiduels. La nourriture est représentée par des ressources ponctuelles uniformément régénérées ; il n'y a ni gradients, ni diffusion, ni absorption partielle. La ligne de visibilité donne un accès binaire. Il n'y a pas encore de communication, de spécialisation, de collisions avec obstacles ou de reproduction collective.
 
-Les organismes se déplacent aléatoirement et ne perçoivent pas la nourriture. Il n'y a pas encore de reproduction, de génétique, de vieillissement mortel, de prédation ou de maladie. Les prochaines étapes V0.4 peuvent introduire reproduction et héritage de traits individuels sans changer le protocole de monde.
+La suite peut ajouter une validation expérimentale sur des lots de seeds, une meilleure intégration des contraintes dans les colonies très denses, puis des signaux locaux et une distribution spatiale contrôlée des nutriments. Toute comparaison devrait conserver les mêmes lois et mesurer plusieurs répétitions avant de conclure.

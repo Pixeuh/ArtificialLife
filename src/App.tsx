@@ -13,7 +13,7 @@ const definitions: WorldDefinition[] = [
   { id: 'world-b', name: 'Monde B', width: 4_000, height: 2_500, seed: 927_163_04, config: { initialOrganismCount: 40, initialFoodCount: 180, maxFoodCount: 300 } },
 ]
 
-type WorldSettings = { organisms: number; foods: number; baseMetabolismRate: number; movementEnergyCost: number }
+type WorldSettings = { organisms: number; foods: number; foodEnergy: number; foodRegenerationRate: number; baseMetabolismRate: number; movementEnergyCost: number; divisionEnergyThreshold: number; mutationRate: number; mutationStep: number; adhesionEnergyCost: number; maximumPopulation: number }
 
 export default function App() {
   const workers = useRef<Worker[]>([])
@@ -26,15 +26,24 @@ export default function App() {
     speed: 1,
     organisms: [],
     resources: [],
-    statistics: { population: 0, resources: 0, totalFoodConsumed: 0, averageEnergy: 0, averageAge: 0, initialPopulation: 0, totalDeaths: 0, starvationDeaths: 0 },
+    links: [],
+    history: [],
+    statistics: { population: 0, resources: 0, totalFoodConsumed: 0, averageEnergy: 0, averageAge: 0, initialPopulation: 0, totalDeaths: 0, starvationDeaths: 0, divisions: 0, colonies: 0, isolatedCells: 0, averageColonySize: 0, largestColonySize: 0, averageAdhesion: 0, averageElongation: 0, maxGeneration: 0, birthRate: 0, mortalityRate: 0 },
   })))
   const [selectedId, setSelectedId] = useState(definitions[0].id)
   const [selectedOrganismId, setSelectedOrganismId] = useState<string | null>(null)
   const [draftCounts, setDraftCounts] = useState<Record<string, WorldSettings>>(() => Object.fromEntries(definitions.map(definition => [definition.id, {
     organisms: definition.config?.initialOrganismCount ?? WORLD_DEFAULTS.initialOrganismCount,
     foods: definition.config?.initialFoodCount ?? WORLD_DEFAULTS.initialFoodCount,
+    foodEnergy: definition.config?.foodEnergy ?? WORLD_DEFAULTS.foodEnergy,
+    foodRegenerationRate: definition.config?.foodRegenerationRate ?? WORLD_DEFAULTS.foodRegenerationRate,
     baseMetabolismRate: definition.config?.baseMetabolismRate ?? WORLD_DEFAULTS.baseMetabolismRate,
     movementEnergyCost: definition.config?.movementEnergyCost ?? WORLD_DEFAULTS.movementEnergyCost,
+    divisionEnergyThreshold: definition.config?.divisionEnergyThreshold ?? WORLD_DEFAULTS.divisionEnergyThreshold,
+    mutationRate: definition.config?.mutationRate ?? WORLD_DEFAULTS.mutationRate,
+    mutationStep: definition.config?.mutationStep ?? WORLD_DEFAULTS.mutationStep,
+    adhesionEnergyCost: definition.config?.adhesionEnergyCost ?? WORLD_DEFAULTS.adhesionEnergyCost,
+    maximumPopulation: definition.config?.maximumPopulation ?? WORLD_DEFAULTS.maximumPopulation,
   }])))
   const [showSettings, setShowSettings] = useState(false)
   const [cameraResetKey, setCameraResetKey] = useState(0)
@@ -83,9 +92,16 @@ export default function App() {
         ...definition.config,
         initialOrganismCount: counts.organisms,
         initialFoodCount: counts.foods,
+        foodEnergy: counts.foodEnergy,
+        foodRegenerationRate: counts.foodRegenerationRate,
         maxFoodCount: Math.max(definition.config?.maxFoodCount ?? WORLD_DEFAULTS.maxFoodCount, counts.foods),
         baseMetabolismRate: counts.baseMetabolismRate,
         movementEnergyCost: counts.movementEnergyCost,
+        divisionEnergyThreshold: counts.divisionEnergyThreshold,
+        mutationRate: counts.mutationRate,
+        mutationStep: counts.mutationStep,
+        adhesionEnergyCost: counts.adhesionEnergyCost,
+        maximumPopulation: counts.maximumPopulation,
       }
       message = { type, world: { ...definition, config } }
       setSelectedOrganismId(null)
@@ -94,7 +110,11 @@ export default function App() {
   }
 
   const updateWorldSetting = (field: keyof WorldSettings, value: number): void => {
-    const bounded = !Number.isFinite(value) ? 0 : field === 'organisms' || field === 'foods' ? Math.max(0, Math.min(2_000, Math.floor(value))) : Math.max(0, value)
+    const bounded = !Number.isFinite(value) ? 0
+      : field === 'organisms' || field === 'foods' ? Math.max(0, Math.min(2_000, Math.floor(value)))
+        : field === 'maximumPopulation' ? Math.max(0, Math.min(10_000, Math.floor(value)))
+        : field === 'mutationRate' || field === 'mutationStep' ? Math.max(0, Math.min(1, value))
+          : Math.max(0, value)
     setDraftCounts(current => ({ ...current, [selectedId]: { ...current[selectedId], [field]: bounded } }))
   }
 
@@ -106,14 +126,14 @@ export default function App() {
 
   return <main className="app-shell">
     <header className="topbar">
-      <a className="brand" href="#" aria-label="Artificial Life accueil"><span className="brand-mark"><i /><i /><i /><i /></span><span>ARTIFICIAL<span className="brand-light"> LIFE</span></span><span className="version">0.3</span></a>
+      <a className="brand" href="#" aria-label="Artificial Life accueil"><span className="brand-mark"><i /><i /><i /><i /></span><span>ARTIFICIAL<span className="brand-light"> LIFE</span></span><span className="version">0.5</span></a>
       <div className="header-divider" />
       <WorldTabs worlds={worlds} selectedId={selectedId} onSelect={selectWorld} />
       <div className="header-right"><span className="system-label"><span className="live-dot" />SYSTÈME OPÉRATIONNEL</span><button className="theme-toggle" onClick={toggleTheme} title={theme === 'dark' ? 'Activer le thème clair' : 'Activer le thème sombre'} aria-label={theme === 'dark' ? 'Activer le thème clair' : 'Activer le thème sombre'} aria-pressed={theme === 'light'}>
         {theme === 'dark' ? <svg key={theme} viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42" /></svg> : <svg key={theme} viewBox="0 0 24 24" aria-hidden="true"><path d="M20.2 15.3A8.5 8.5 0 0 1 8.7 3.8 8.6 8.6 0 1 0 20.2 15.3Z" /></svg>}
       </button><button className={`settings-button ${showSettings ? 'selected' : ''}`} onClick={() => setShowSettings(value => !value)} aria-expanded={showSettings} aria-label="Afficher les paramètres"><span>☷</span><span>Paramètres</span></button></div>
     </header>
-    {showSettings && <div className="settings-popover"><div className="section-kicker">ÉCOSYSTÈME · {selected.name.toUpperCase()}</div><label>Population initiale<input type="number" min="0" max="2000" value={draftCounts[selectedId].organisms} onChange={event => updateWorldSetting('organisms', Number(event.target.value))} /></label><label>Ressources initiales<input type="number" min="0" max="2000" value={draftCounts[selectedId].foods} onChange={event => updateWorldSetting('foods', Number(event.target.value))} /></label><label>Métabolisme de base (énergie/s)<input type="number" min="0" step="0.01" value={draftCounts[selectedId].baseMetabolismRate} onChange={event => updateWorldSetting('baseMetabolismRate', Number(event.target.value))} /></label><label>Coût déplacement (énergie/u)<input type="number" min="0" step="0.0001" value={draftCounts[selectedId].movementEnergyCost} onChange={event => updateWorldSetting('movementEnergyCost', Number(event.target.value))} /></label><p>Les réglages sont appliqués à la réinitialisation du monde.</p><p>Pas fixe : <strong>33,3 ms · worker indépendant</strong></p></div>}
+    {showSettings && <div className="settings-popover"><div className="section-kicker">ÉCOSYSTÈME · {selected.name.toUpperCase()}</div><label>Population initiale<input type="number" min="0" max="2000" value={draftCounts[selectedId].organisms} onChange={event => updateWorldSetting('organisms', Number(event.target.value))} /></label><label>Population maximale<input type="number" min="0" max="10000" step="1" value={draftCounts[selectedId].maximumPopulation} onChange={event => updateWorldSetting('maximumPopulation', Number(event.target.value))} /></label><label>Ressources initiales<input type="number" min="0" max="2000" value={draftCounts[selectedId].foods} onChange={event => updateWorldSetting('foods', Number(event.target.value))} /></label><label>Énergie par ressource<input type="number" min="0" step="1" value={draftCounts[selectedId].foodEnergy} onChange={event => updateWorldSetting('foodEnergy', Number(event.target.value))} /></label><label>Régénération ressources/s<input type="number" min="0" step="0.1" value={draftCounts[selectedId].foodRegenerationRate} onChange={event => updateWorldSetting('foodRegenerationRate', Number(event.target.value))} /></label><label>Métabolisme (énergie/s)<input type="number" min="0" step="0.01" value={draftCounts[selectedId].baseMetabolismRate} onChange={event => updateWorldSetting('baseMetabolismRate', Number(event.target.value))} /></label><label>Coût mouvement (énergie/u)<input type="number" min="0" step="0.0001" value={draftCounts[selectedId].movementEnergyCost} onChange={event => updateWorldSetting('movementEnergyCost', Number(event.target.value))} /></label><label>Seuil de division<input type="number" min="0" step="1" value={draftCounts[selectedId].divisionEnergyThreshold} onChange={event => updateWorldSetting('divisionEnergyThreshold', Number(event.target.value))} /></label><label>Mutation par division (%)<input type="number" min="0" max="100" step="1" value={draftCounts[selectedId].mutationRate * 100} onChange={event => updateWorldSetting('mutationRate', Number(event.target.value) / 100)} /></label><label>Amplitude mutation<input type="number" min="0" max="1" step="0.01" value={draftCounts[selectedId].mutationStep} onChange={event => updateWorldSetting('mutationStep', Number(event.target.value))} /></label><label>Coût adhésion (énergie/s/lien)<input type="number" min="0" step="0.001" value={draftCounts[selectedId].adhesionEnergyCost} onChange={event => updateWorldSetting('adhesionEnergyCost', Number(event.target.value))} /></label><p>Réglages appliqués à la réinitialisation.</p><p>Pas fixe : <strong>33,3 ms · worker indépendant</strong></p></div>}
     <section className="workspace">
       <div className="canvas-column">
         <div className="canvas-toolbar"><div><span className="breadcrumb">ESPACE DE SIMULATION</span><span className="breadcrumb-separator">/</span><span className="current-world">{selected.name}</span></div><button className="center-button" onClick={() => setCameraResetKey(value => value + 1)}><span>⌖</span> Recentrer</button></div>
@@ -123,6 +143,6 @@ export default function App() {
       </div>
       <WorldInfo world={selected} selectedOrganismId={selectedOrganismId} deathNotice={deathNotice} />
     </section>
-    <footer className="app-footer"><span>ARTIFICIAL LIFE <span className="footer-sep">/</span> LABORATOIRE DE VIE ARTIFICIELLE</span><span>ENVIRONNEMENT DE SIMULATION <span className="footer-sep">·</span> V.0.3.0</span></footer>
+    <footer className="app-footer"><span>ARTIFICIAL LIFE <span className="footer-sep">/</span> LABORATOIRE DE VIE ARTIFICIELLE</span><span>ENVIRONNEMENT DE SIMULATION <span className="footer-sep">·</span> V.0.5.0</span></footer>
   </main>
 }
