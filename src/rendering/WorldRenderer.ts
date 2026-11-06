@@ -27,6 +27,11 @@ export type TerrainColors = Record<'plains' | 'forest' | 'desert' | 'mountain' |
 export class WorldRenderer {
   private readonly terrainRenderer = new TerrainRenderer()
   private terrain?: TerrainSnapshot
+  private organismSource?: WorldSnapshot['organisms']
+  private resourceSource?: WorldSnapshot['resources']
+  private orderedOrganisms: WorldSnapshot['organisms'] = []
+  private orderedResources: WorldSnapshot['resources'] = []
+  private organismsById = new Map<string, WorldSnapshot['organisms'][number]>()
   static readonly defaultPalette: CanvasPalette = {
     background: '#080c10', grid: '#182329', boundary: '#3b5960', origin: '#69e4c2', label: '#667b80',
     organism: '#75dced', organismLow: '#e8c66c', organismCritical: '#ed826f', organismStroke: '#c0f7ff', direction: '#c0f7ff', selection: '#a5f1df', food: '#8be878', foraging: '#b9e66a', motility: '#6fbfff', resilience: '#dc9af0',
@@ -67,6 +72,15 @@ export class WorldRenderer {
   }
 
   draw(context: CanvasRenderingContext2D, width: number, height: number, world: WorldSnapshot, camera: Camera, selectedOrganismId: string | null = null, palette: CanvasPalette = WorldRenderer.defaultPalette, presentationTime = 0): void {
+    if (this.organismSource !== world.organisms) {
+      this.organismSource = world.organisms
+      this.orderedOrganisms = world.organisms.slice().sort((a, b) => a.y - b.y)
+      this.organismsById = new Map(world.organisms.map(organism => [organism.id, organism]))
+    }
+    if (this.resourceSource !== world.resources) {
+      this.resourceSource = world.resources
+      this.orderedResources = world.resources.slice().sort((a, b) => a.y - b.y)
+    }
     const { zoom } = camera
     context.fillStyle = palette.background
     context.fillRect(0, 0, width, height)
@@ -91,13 +105,13 @@ export class WorldRenderer {
     const viewport = { x: width, y: height }
     const selectedCell = world.organisms.find(organism => organism.id === selectedOrganismId)
     const selectedColonyId = selectedCell?.colonyId
-    const organismsById = new Map(world.organisms.map(organism => [organism.id, organism]))
     for (const link of world.links) {
-      const a = organismsById.get(link.cellAId)
-      const b = organismsById.get(link.cellBId)
+      const a = this.organismsById.get(link.cellAId)
+      const b = this.organismsById.get(link.cellBId)
       if (!a || !b) continue
       const start = camera.worldToScreen(a, viewport)
       const end = camera.worldToScreen(b, viewport)
+      if (Math.max(start.x, end.x) < -16 || Math.min(start.x, end.x) > width + 16 || Math.max(start.y, end.y) < -16 || Math.min(start.y, end.y) > height + 16) continue
       const highlighted = selectedColonyId !== undefined && a.colonyId === selectedColonyId
       context.strokeStyle = highlighted ? palette.selection : palette.boundary
       context.lineWidth = highlighted ? 2.4 : 0.8 + link.strength * 0.8
@@ -107,9 +121,10 @@ export class WorldRenderer {
       context.stroke()
     }
 
-    for (const resource of [...world.resources].sort((a, b) => a.y - b.y)) {
+    for (const resource of this.orderedResources) {
       const point = camera.worldToScreen(resource, viewport)
       const radius = Math.max(2, resource.radius * WORLD_SCALE * zoom)
+      if (point.x + radius < -8 || point.x - radius > width + 8 || point.y + radius < -8 || point.y - radius > height + 8) continue
       context.save()
       context.globalAlpha = 0.2
       context.fillStyle = '#101713'
@@ -127,9 +142,12 @@ export class WorldRenderer {
 
     const farView = zoom < 0.42
     const closeView = zoom > 1.65
-    for (const organism of [...world.organisms].sort((a, b) => a.y - b.y)) {
+    for (const organism of this.orderedOrganisms) {
       const point = camera.worldToScreen(organism, viewport)
       const radius = Math.max(farView ? 2.1 : 2.8, organism.radius * WORLD_SCALE * zoom)
+      const axisRatio = Math.max(Math.sqrt(organism.genome.aspectRatio), 1 / Math.sqrt(organism.genome.aspectRatio))
+      const margin = Math.max(16, radius * axisRatio + 12)
+      if (point.x + margin < 0 || point.x - margin > width || point.y + margin < 0 || point.y - margin > height) continue
       const isSelected = organism.id === selectedOrganismId
       const isInSelectedColony = selectedColonyId !== undefined && organism.colonyId === selectedColonyId
       const energyRatio = organism.energy / Math.max(organism.maxEnergy, Number.EPSILON)

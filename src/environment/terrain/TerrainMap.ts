@@ -1,7 +1,6 @@
 import type { TerrainCell, TerrainGenerationConfig, TerrainSnapshot } from './terrainTypes'
 import { generateTerrain } from './TerrainGenerator'
 import type { Organism } from '../../organisms/Organism'
-import { cellBoundaryExtents } from '../../organisms/CellGeometry'
 
 export class TerrainMap {
   readonly columns: number
@@ -59,25 +58,31 @@ export class TerrainMap {
 
   /** Project a cell pushed onto an obstacle to the closest valid terrain cell center. */
   constrainOrganism(organism: Organism): boolean {
-    const extents = cellBoundaryExtents(organism)
-    if (this.canOccupy(organism.x, organism.y, Math.max(extents.x, extents.y), 1, organism.direction)) return false
-    let bestDistance = Number.POSITIVE_INFINITY
-    let bestX = organism.x
-    let bestY = organism.y
-    for (let index = 0; index < this.cells.length; index += 1) {
-      if (!this.cells[index].traversable) continue
-      const column = index % this.columns
-      const row = Math.floor(index / this.columns)
-      const x = Math.min(this.width, (column + 0.5) * this.config.cellSize)
-      const y = Math.min(this.height, (row + 0.5) * this.config.cellSize)
-      if (!this.canOccupy(x, y, Math.max(extents.x, extents.y), 1, organism.direction)) continue
-      const distance = (x - organism.x) ** 2 + (y - organism.y) ** 2
-      if (distance < bestDistance) { bestDistance = distance; bestX = x; bestY = y }
-    }
-    if (!Number.isFinite(bestDistance)) return false
-    organism.x = bestX
-    organism.y = bestY
+    if (this.canOccupy(organism.x, organism.y, organism.radius, organism.genome.aspectRatio, organism.direction)) return false
+    const nearby = this.findPositionNear(organism.x, organism.y, organism.radius, organism.genome.aspectRatio, organism.direction, 3)
+    if (!nearby) return false
+    organism.x = nearby.x
+    organism.y = nearby.y
     return true
+  }
+
+  /** Bounded local repair/search. It cannot relocate a cell across the map. */
+  findPositionNear(x: number, y: number, radius: number, aspectRatio: number, direction: number, maxRings = 3): { x: number; y: number } | undefined {
+    const size = this.config.cellSize
+    const column = Math.floor(x / size), row = Math.floor(y / size)
+    for (let ring = 0; ring <= maxRings; ring += 1) {
+      let best: { x: number; y: number; distance: number } | undefined
+      for (let dy = -ring; dy <= ring; dy += 1) for (let dx = -ring; dx <= ring; dx += 1) {
+        if (ring > 0 && Math.max(Math.abs(dx), Math.abs(dy)) !== ring) continue
+        const candidateX = Math.min(this.width - Number.EPSILON, Math.max(0, (column + dx + 0.5) * size))
+        const candidateY = Math.min(this.height - Number.EPSILON, Math.max(0, (row + dy + 0.5) * size))
+        if (!this.canOccupy(candidateX, candidateY, radius, aspectRatio, direction)) continue
+        const distance = (candidateX - x) ** 2 + (candidateY - y) ** 2
+        if (!best || distance < best.distance) best = { x: candidateX, y: candidateY, distance }
+      }
+      if (best) return { x: best.x, y: best.y }
+    }
+    return undefined
   }
 
   snapshot(): TerrainSnapshot {

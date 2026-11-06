@@ -36,14 +36,19 @@ export function WorldCanvas({ world, theme, terrain, selectedOrganismId, followT
     const canvas = canvasRef.current
     const context = canvas?.getContext('2d')
     if (!canvas || !context) return
-    cameraRef.current.centerOnWorld(worldRef.current.width, worldRef.current.height)
     let frame = 0
+    let hasInitialFit = false
     const resize = (): void => {
       const bounds = canvas.getBoundingClientRect()
+      if (bounds.width <= 0 || bounds.height <= 0) return
       const ratio = window.devicePixelRatio || 1
       canvas.width = Math.round(bounds.width * ratio)
       canvas.height = Math.round(bounds.height * ratio)
       context.setTransform(ratio, 0, 0, ratio, 0, 0)
+      if (!hasInitialFit) {
+        cameraRef.current.fitWorld(worldRef.current.width, worldRef.current.height, { x: bounds.width, y: bounds.height })
+        hasInitialFit = true
+      }
     }
     const observer = new ResizeObserver(resize)
     observer.observe(canvas)

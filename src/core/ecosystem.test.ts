@@ -368,10 +368,24 @@ describe('ecosystem determinism and systems', () => {
   })
 
   it('runs a population of a thousand cells through repeated ticks', () => {
-    const simulation = new Simulation(definition('scale', 190, config({ initialOrganismCount: 1_000, initialFoodCount: 0, baseMetabolismRate: 0, mutationRate: 0 })))
+    const simulation = new Simulation(definition('scale', 190, config({ initialOrganismCount: 1_000, organismRadius: 2, initialFoodCount: 0, baseMetabolismRate: 0, mutationRate: 0 })))
     for (let tick = 0; tick < 30; tick += 1) simulation.step()
     expect(simulation.world.tick).toBe(30)
     expect(simulation.world.organisms).toHaveLength(1_000)
+  })
+
+  it('rejects a division with no room without spending energy, consuming an id, or advancing randomness', () => {
+    const simulation = new Simulation({ id: 'blocked-division', name: 'Blocked division', width: 20, height: 20, seed: 19, config: { initialOrganismCount: 0, initialFoodCount: 0, organismRadius: 7, divisionEnergyThreshold: 50 } })
+    const parent = new Organism('parent', 10, 10, 0, 0, 7, 100, 100, 0, 0)
+    simulation.world.organisms.push(parent)
+    const random = new SeededRandom(42)
+    const state = random.getState()
+    const nextId = simulation.world.nextOrganismNumber
+    expect(ReproductionSystem.update(simulation.world, random)).toBe(0)
+    expect(parent.energy).toBe(100)
+    expect(simulation.world.nextOrganismNumber).toBe(nextId)
+    expect(simulation.world.divisions).toBe(0)
+    expect(random.getState()).toBe(state)
   })
 
   it('resolves overlap using oriented cell geometry and bounded correction passes', () => {

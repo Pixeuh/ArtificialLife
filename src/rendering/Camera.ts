@@ -40,6 +40,13 @@ export class Camera {
     this.offset = { x: -width * WORLD_SCALE / 2, y: -height * WORLD_SCALE / 2 }
   }
 
+  fitWorld(worldWidth: number, worldHeight: number, viewport: Point, margin = 0.9): void {
+    const fit = Math.min(viewport.x / (worldWidth * WORLD_SCALE), viewport.y / (worldHeight * WORLD_SCALE)) * margin
+    this.zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, fit))
+    const scale = WORLD_SCALE * this.zoom
+    this.offset = { x: -worldWidth * scale / 2, y: -worldHeight * scale / 2 }
+  }
+
   follow(point: Point): void {
     const scale = WORLD_SCALE * this.zoom
     this.offset = { x: -point.x * scale, y: -point.y * scale }

@@ -40,4 +40,18 @@ describe('procedural cell rendering', () => {
     renderer.draw(withoutLink.context, 400, 300, simulation.world.snapshot(), new Camera())
     expect(withLink.moveCount() - withoutLink.moveCount()).toBe(1)
   })
+
+  it('skips organisms outside the viewport while retaining the cached biological array order', () => {
+    const simulation = new Simulation({ id: 'cull', name: 'Cull', width: 2_000, height: 2_000, seed: 1, config: { initialOrganismCount: 0 } })
+    const visible = new Organism('visible', 100, 100, 0, 0, 5, 40)
+    const hidden = new Organism('hidden', 1_500, 1_500, 0, 0, 5, 40)
+    simulation.world.organisms.push(hidden, visible)
+    const recording = recordingContext()
+    const camera = new Camera()
+    camera.zoom = 1
+    camera.offset = { x: -100 * 0.14, y: -100 * 0.14 }
+    new WorldRenderer().draw(recording.context, 400, 300, simulation.world.snapshot(), camera)
+    expect(recording.ellipses).toHaveLength(3)
+    expect(simulation.world.organisms.map(cell => cell.id)).toEqual(['hidden', 'visible'])
+  })
 })

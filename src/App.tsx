@@ -16,13 +16,12 @@ import { createColonyGrowthExperiment } from './experiments/colonyGrowth'
 import { createDifferentiationExperiment } from './experiments/differentiation'
 import { APP_VERSION } from './version'
 
-const differentiationPair = createDifferentiationExperiment()
+const differentiationConditions = createDifferentiationExperiment()
 const definitions: WorldDefinition[] = [
   { id: 'world-a', name: 'Monde A', width: 4_000, height: 2_500, seed: 381_047_21, originType: 'primordial', interventionMode: 'observation', config: { initialOrganismCount: 50, initialFoodCount: 250, maxFoodCount: 350 } },
   { id: 'world-b', name: 'Monde B', width: 4_000, height: 2_500, seed: 927_163_04, originType: 'primordial', interventionMode: 'divine', config: { initialOrganismCount: 40, initialFoodCount: 180, maxFoodCount: 300 } },
   createColonyGrowthExperiment(),
-  differentiationPair.treatment,
-  differentiationPair.control,
+  ...differentiationConditions,
 ]
 
 type WorldSettings = { organisms: number; foods: number; foodEnergy: number; foodRegenerationRate: number; baseMetabolismRate: number; movementEnergyCost: number; divisionEnergyThreshold: number; mutationRate: number; mutationStep: number; adhesionEnergyCost: number; maximumPopulation: number }

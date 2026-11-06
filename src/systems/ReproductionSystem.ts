@@ -9,12 +9,12 @@ export class ReproductionSystem {
   static update(world: World, random: SeededRandom): number {
     const parents = world.organisms
     const offspring: Organism[] = []
+    const occupants = [...parents]
     for (const parent of parents) {
       if (!parent.active || parent.energy < world.config.divisionEnergyThreshold) continue
       if (parents.length + offspring.length >= world.config.maximumPopulation) break
 
       const daughterEnergy = parent.energy / 2
-      parent.energy = daughterEnergy
       const daughter = OrganismFactory.createOffspring(
         parent,
         `organism-${world.nextOrganismNumber.toString().padStart(6, '0')}`,
@@ -24,8 +24,12 @@ export class ReproductionSystem {
         random,
         daughterEnergy,
         world.terrain,
+        occupants,
         world.tick + 1,
       )
+      if (!daughter) continue
+      parent.energy = daughterEnergy
+      occupants.push(daughter)
       world.nextOrganismNumber += 1
       offspring.push(daughter)
       world.divisions += 1

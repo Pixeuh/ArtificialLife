@@ -106,12 +106,17 @@ describe('functional differentiation', () => {
     expect(restored.world.snapshot().organisms.map(cell => ({ parentId: cell.parentId, lineageId: cell.lineageId, birthTick: cell.birthTick }))).toEqual(simulation.world.snapshot().organisms.map(cell => ({ parentId: cell.parentId, lineageId: cell.lineageId, birthTick: cell.birthTick })))
   })
 
-  it('compares matched seeded treatment and control worlds deterministically', () => {
-    const pair = createDifferentiationExperiment(20_260_901)
-    const treatment = new Simulation(pair.treatment)
-    const repeated = new Simulation(pair.treatment)
-    const control = new Simulation(pair.control)
+  it('defines all four matched 2×2 factorial conditions and replays them deterministically', () => {
+    const conditions = createDifferentiationExperiment(20_260_901)
+    expect(conditions.map(item => [item.config?.functionalDifferentiation, item.config?.energyTransferEnabled])).toEqual([[false, false], [true, false], [false, true], [true, true]])
+    expect(new Set(conditions.map(item => item.seed)).size).toBe(1)
+    const treatment = new Simulation(conditions[3])
+    const repeated = new Simulation(conditions[3])
+    const control = new Simulation(conditions[0])
+    const differentiationOnly = new Simulation(conditions[1])
+    const transferOnly = new Simulation(conditions[2])
     for (let tick = 0; tick < 1_200; tick += 1) { treatment.step(); repeated.step(); control.step() }
+    differentiationOnly.step(); transferOnly.step()
     const result = treatment.world.snapshot()
     const controlResult = control.world.snapshot()
     expect(result).toEqual(repeated.world.snapshot())

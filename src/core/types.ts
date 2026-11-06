@@ -168,7 +168,7 @@ export interface WorldDefinition {
   readonly seed: number
   readonly originType?: 'primordial' | 'custom'
   readonly interventionMode?: 'observation' | 'divine'
-  readonly scenario?: 'colony-growth' | 'differentiation-treatment' | 'differentiation-control'
+    readonly scenario?: 'colony-growth' | 'differentiation-treatment' | 'differentiation-control' | 'factorial-reference' | 'factorial-differentiation' | 'factorial-transfer' | 'factorial-coupled'
   /** Optional deterministic founder genotypes used to define experimental initial conditions. */
   readonly initialGenomes?: readonly CellGenome[]
   readonly config?: Partial<WorldConfig>

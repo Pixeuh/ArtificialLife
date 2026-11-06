@@ -6,9 +6,19 @@ import type { TerrainMap } from './terrain/TerrainMap'
 export class ResourceManager {
   private nextId = 0
   private regenerationRemainder = 0
+  private readonly habitat: { index: number; cumulativeWeight: number }[] = []
+  private readonly habitatWeight: number
 
   constructor(readonly resources: FoodResource[], private readonly width: number, private readonly height: number, private readonly config: WorldConfig, private readonly random: SeededRandom, private readonly terrain?: TerrainMap) {
     this.nextId = resources.length
+    let total = 0
+    if (terrain) for (let index = 0; index < terrain.cells.length; index += 1) {
+      const cell = terrain.cells[index]
+      if (!cell.traversable || cell.foodPotential <= 0) continue
+      total += cell.foodPotential * terrain.config.cellSize ** 2
+      this.habitat.push({ index, cumulativeWeight: total })
+    }
+    this.habitatWeight = total
   }
 
   regenerate(deltaTime: number): void {
@@ -40,24 +50,13 @@ export class ResourceManager {
   }
 
   private create(): FoodResource | undefined {
-    const index = this.nextId++
     const radius = this.config.foodRadius
     if (this.terrain) {
-      const habitat: { index: number; weight: number }[] = []
-      let totalWeight = 0
-      for (let cellIndex = 0; cellIndex < this.terrain.cells.length; cellIndex += 1) {
-        const cell = this.terrain.cells[cellIndex]
-        if (!cell.traversable || cell.foodPotential <= 0) continue
-        const weight = cell.foodPotential * this.terrain.config.cellSize ** 2
-        totalWeight += weight
-        habitat.push({ index: cellIndex, weight: totalWeight })
-      }
-      if (totalWeight <= 0) return undefined
-      let selection = this.random.next() * totalWeight
-      let selected = habitat[habitat.length - 1].index
-      for (const entry of habitat) {
-        if (selection < entry.weight) { selected = entry.index; break }
-      }
+      if (this.habitatWeight <= 0) return undefined
+      const selection = this.random.next() * this.habitatWeight
+      let low = 0, high = this.habitat.length - 1
+      while (low < high) { const mid = (low + high) >>> 1; if (selection < this.habitat[mid].cumulativeWeight) high = mid; else low = mid + 1 }
+      const selected = this.habitat[low].index
       const column = selected % this.terrain.columns
       const row = Math.floor(selected / this.terrain.columns)
       const left = column * this.terrain.config.cellSize
@@ -68,14 +67,18 @@ export class ResourceManager {
       const insetY = Math.min(radius, cellHeight / 2)
       const x = left + insetX + this.random.next() * Math.max(0, cellWidth - insetX * 2)
       const y = top + insetY + this.random.next() * Math.max(0, cellHeight - insetY * 2)
-      return new FoodResource(`food-${index.toString().padStart(5, '0')}`, x, y, radius, this.config.foodEnergy)
+      const resource = new FoodResource(`food-${this.nextId.toString().padStart(5, '0')}`, x, y, radius, this.config.foodEnergy)
+      this.nextId += 1
+      return resource
     }
-    return new FoodResource(
-      `food-${index.toString().padStart(5, '0')}`,
+    const resource = new FoodResource(
+      `food-${this.nextId.toString().padStart(5, '0')}`,
       radius + this.random.next() * Math.max(0, this.width - radius * 2),
       radius + this.random.next() * Math.max(0, this.height - radius * 2),
       radius,
       this.config.foodEnergy,
     )
+    this.nextId += 1
+    return resource
   }
 }

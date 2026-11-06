@@ -124,8 +124,21 @@ describe('procedural terrain', () => {
     const parent = new Organism('parent', x, y, 0, 0, 7, 100, 100, 0, 0)
     simulation.world.organisms.push(parent)
     const child = OrganismFactory.createOffspring(parent, 'child', simulation.world.width, simulation.world.height, simulation.world.config, new SeededRandom(3), 50, terrain)
+    expect(child).toBeDefined()
+    if (!child) return
     expect(terrain.canOccupy(child.x, child.y, child.radius, child.genome.aspectRatio, child.direction)).toBe(true)
     expect(Math.hypot(child.x - parent.x, child.y - parent.y)).toBeLessThanOrEqual(terrain.config.cellSize * 2)
+  })
+
+  it('uses only bounded nearby terrain during local repair', () => {
+    const terrain = new TerrainMap(400, 400, 34, { cellSize: 20 })
+    for (let index = 0; index < terrain.cells.length; index += 1) setBiome(terrain, index, 'plains')
+    const blockedIndex = 10 * terrain.columns + 10
+    setBiome(terrain, blockedIndex, 'water')
+    const x = 210, y = 210
+    const origin = terrain.findPositionNear(x, y, 4, 1, 0, 2)
+    expect(origin).toBeDefined()
+    if (origin) expect(Math.hypot(origin.x - x, origin.y - y)).toBeLessThanOrEqual(Math.SQRT2 * terrain.config.cellSize)
   })
 
   it('keeps linked cells on traversable terrain when a colony meets a water wall', () => {
