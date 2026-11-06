@@ -218,6 +218,104 @@ describe('ecosystem determinism and systems', () => {
     expect(child.genome.adhesion).toBeLessThanOrEqual(1)
     expect(child.genome.aspectRatio).toBeGreaterThanOrEqual(0.5)
     expect(child.genome.aspectRatio).toBeLessThanOrEqual(2)
+    expect(child.genome.branching).toBeGreaterThanOrEqual(0)
+    expect(child.genome.branching).toBeLessThanOrEqual(1)
+    expect(child.genome.bondPersistence).toBeGreaterThanOrEqual(0.5)
+    expect(child.genome.bondPersistence).toBeLessThanOrEqual(2)
+    expect(child.genome.divisionAngle).toBeGreaterThanOrEqual(-Math.PI)
+    expect(child.genome.divisionAngle).toBeLessThanOrEqual(Math.PI)
+  })
+
+  it('inherits division-axis, branching and bond persistence traits without mutation', () => {
+    const simulation = new Simulation(definition('morphology-inheritance', 17, config({ initialOrganismCount: 0, initialFoodCount: 0, mutationRate: 0 })))
+    const parent = new Organism('parent', 100, 100, 0, 0, 5, 100, 100, 0, 0, { adhesion: 1, aspectRatio: 1, divisionAngle: 0.4, branching: 0.7, bondPersistence: 1.6 })
+    simulation.world.organisms.push(parent)
+    ReproductionSystem.update(simulation.world, new SeededRandom(5))
+    expect(simulation.world.organisms[1].genome).toEqual(parent.genome)
+  })
+
+  it('places daughters along the inherited division axis and forms seeded branches', () => {
+    const makeDaughter = (branching: number, seed: number) => {
+      const settings = config({ initialOrganismCount: 0, initialFoodCount: 0, mutationRate: 0 })
+      const simulation = new Simulation(definition('division-axis', seed, settings))
+      const parent = new Organism('parent', 200, 200, 0, 0, 5, 100, 100, 0, 0, { adhesion: 0, aspectRatio: 1, divisionAngle: Math.PI / 2, branching, bondPersistence: 1 })
+      simulation.world.organisms.push(parent)
+      ReproductionSystem.update(simulation.world, new SeededRandom(seed))
+      return simulation.world.organisms[1]
+    }
+    const axial = makeDaughter(0, 12)
+    expect(axial.x).toBeCloseTo(200)
+    expect(axial.y).toBeGreaterThan(200)
+    expect(axial.direction).toBeCloseTo(Math.PI / 2)
+    const branchA = makeDaughter(1, 44)
+    const branchB = makeDaughter(1, 44)
+    expect(branchA.snapshot()).toEqual(branchB.snapshot())
+    expect(Math.abs(branchA.x - 200)).toBeGreaterThan(1)
+  })
+
+  it('gives persistent bonds a larger stress allowance and higher upkeep', () => {
+    const createBond = (persistence: number, id: string) => {
+      const simulation = new Simulation(definition(id, 3, config({ initialOrganismCount: 0, initialFoodCount: 0, mutationRate: 0, adhesionEnergyCost: 0.5 })))
+      const parent = new Organism('parent', 200, 200, 0, 0, 5, 100, 100, 0, 0, { adhesion: 1, aspectRatio: 1, divisionAngle: 0, branching: 0, bondPersistence: persistence })
+      simulation.world.organisms.push(parent)
+      ReproductionSystem.update(simulation.world, new SeededRandom(9))
+      return simulation
+    }
+    const fragile = createBond(0.5, 'fragile')
+    const persistent = createBond(2, 'persistent')
+    expect(persistent.world.links[0].breakDistance).toBeGreaterThan(fragile.world.links[0].breakDistance)
+    for (const simulation of [fragile, persistent]) for (const cell of simulation.world.organisms) cell.energy = 10
+    const fragileCells = fragile.world.organisms
+    const fragileLink = fragile.world.links[0]
+    fragileCells[1].x = fragileCells[0].x + fragileLink.restLength * 1.8
+    expect(AdhesionSystem.constrain(fragile.world)).toBe(1)
+    const persistentCells = persistent.world.organisms
+    const persistentLink = persistent.world.links[0]
+    persistentCells[1].x = persistentCells[0].x + persistentLink.restLength * 1.8
+    expect(AdhesionSystem.constrain(persistent.world)).toBe(0)
+    MetabolismSystem.update(persistent.world.organisms, 1, persistent.world.links, 0.5)
+    expect(persistent.world.organisms.every(cell => cell.energy < 9.1)).toBe(true)
+  })
+
+  it('grows a linked colony from repeated cell divisions with valid energies and positions', () => {
+    const simulation = new Simulation(definition('colony-growth', 22, config({ initialOrganismCount: 0, initialFoodCount: 0, mutationRate: 0, adhesionEnergyCost: 0 })))
+    simulation.world.organisms.push(new Organism('root', 250, 200, 0, 0, 5, 100, 100, 0, 0, { adhesion: 1, aspectRatio: 1, divisionAngle: 0.3, branching: 0.8, bondPersistence: 1 }))
+    for (let generation = 0; generation < 3; generation += 1) {
+      for (const cell of simulation.world.organisms) cell.energy = 100
+      ReproductionSystem.update(simulation.world, new SeededRandom(100 + generation))
+      AdhesionSystem.constrain(simulation.world)
+      CellPhysicsSystem.resolve(simulation.world.organisms, simulation.world.width, simulation.world.height)
+    }
+    const snapshot = simulation.world.snapshot()
+    expect(snapshot.organisms.length).toBe(8)
+    expect(snapshot.statistics.colonies).toBe(1)
+    expect(snapshot.statistics.largestColonySize).toBe(8)
+    expect(simulation.world.organisms.every(cell => Number.isFinite(cell.x) && Number.isFinite(cell.y) && Number.isFinite(cell.energy) && cell.energy >= 0)).toBe(true)
+  })
+
+  it('reports geometric colony elongation and average link density from live topology', () => {
+    const simulation = new Simulation(definition('geometry-stats', 25, config({ initialOrganismCount: 0, initialFoodCount: 0 })))
+    const a = new Organism('a', 50, 50, 0, 0, 5, 20)
+    const b = new Organism('b', 70, 50, 0, 0, 5, 20)
+    simulation.world.organisms.push(a, b)
+    simulation.world.links.push({ id: 'a::b', cellAId: 'a', cellBId: 'b', restLength: 20, breakDistance: 30, strength: 0.5 })
+    expect(simulation.world.snapshot().statistics).toMatchObject({ colonies: 1, averageLinksPerCell: 1 })
+    expect(simulation.world.snapshot().statistics.averageColonyElongation).toBeGreaterThan(1)
+    simulation.world.links = []
+    expect(simulation.world.snapshot().statistics.averageColonyElongation).toBe(0)
+  })
+
+  it('removes dead cells from colony topology without invalidating surviving cells', () => {
+    const simulation = new Simulation(definition('cell-death-link', 27, config({ initialOrganismCount: 0, initialFoodCount: 0 })))
+    const dying = new Organism('dying', 100, 100, 0, 0, 5, 0)
+    const survivor = new Organism('survivor', 110, 100, 0, 0, 5, 20)
+    simulation.world.organisms.push(dying, survivor)
+    simulation.world.links.push({ id: 'dying::survivor', cellAId: dying.id, cellBId: survivor.id, restLength: 10, breakDistance: 20, strength: 0.8 })
+    LifecycleSystem.removeDead(simulation.world)
+    AdhesionSystem.removeDangling(simulation.world)
+    expect(simulation.world.organisms.map(cell => cell.id)).toEqual(['survivor'])
+    expect(simulation.world.links).toHaveLength(0)
+    expect(simulation.world.snapshot().statistics).toMatchObject({ colonies: 0, isolatedCells: 1, totalDeaths: 1 })
   })
 
   it('creates colonies only through division and derives membership from bonds', () => {
@@ -331,6 +429,11 @@ describe('ecosystem determinism and systems', () => {
     expect(stats).toMatchObject({ population: 3, isolatedCells: 1, colonies: 1, averageColonySize: 2, largestColonySize: 2, maxGeneration: 3 })
     expect(stats.averageAdhesion).toBeCloseTo(0.6)
     expect(stats.averageElongation).toBeCloseTo(4 / 3)
+    expect(stats.averageBranchingTendency).toBeGreaterThanOrEqual(0)
+    expect(stats.averageBranchingTendency).toBeLessThanOrEqual(1)
+    expect(stats.averageBondPersistence).toBeGreaterThanOrEqual(0.5)
+    expect(stats.averageBondPersistence).toBeLessThanOrEqual(2)
+    expect(stats.averageColonyElongation).toBeGreaterThan(0)
     simulation.world.divisions = 10
     simulation.world.totalDeaths = 5
     simulation.world.simulatedTime = 10
@@ -341,6 +444,7 @@ describe('ecosystem determinism and systems', () => {
     }
     expect(simulation.world.history).toHaveLength(600)
     expect(simulation.world.history[0].time).toBe(6)
+    expect(simulation.world.history.at(-1)).toMatchObject({ averageBranchingTendency: stats.averageBranchingTendency, averageBondPersistence: stats.averageBondPersistence, averageElongation: stats.averageElongation })
   })
 
   it('keeps linked colonies finite and bonded during repeated contact resolution', () => {

@@ -4,7 +4,7 @@ import { Simulation } from './Simulation'
 import { World } from './World'
 import { Camera, MAX_ZOOM, MIN_ZOOM } from '../rendering/Camera'
 import { generateNewSeed } from '../components/seedActions'
-import type { SimulationSaveV1 } from './SimulationSave'
+import type { SimulationSaveV1, SimulationSaveV2, SimulationSaveV3 } from './SimulationSave'
 
 const definition = (id: string, seed = 1234) => ({ id, name: id, width: 1000, height: 800, seed })
 
@@ -103,6 +103,41 @@ describe('World and Simulation', () => {
     const restored = Simulation.fromSave(legacySave)
     expect(restored.world.snapshot()).toEqual(current.world.snapshot())
   })
+
+  it('writes V4 genes and lineage, and loads V2 cells with safe neutral defaults', () => {
+    const simulation = new Simulation({ ...definition('v4-save', 82), config: { initialOrganismCount: 4, initialFoodCount: 0 } })
+    const save = simulation.save()
+    expect(save.version).toBe(4)
+    expect(save.world.organisms[0].genome).toHaveProperty('branching')
+    expect(save.world.organisms[0]).toMatchObject({ parentId: null, lineageId: save.world.organisms[0].id, birthTick: 0 })
+    const legacy = {
+      ...save,
+      version: 2,
+      world: {
+        ...save.world,
+        organisms: save.world.organisms.map(({ parentId: _parent, lineageId: _lineage, birthTick: _birth, ...cell }) => ({ ...cell, genome: { adhesion: cell.genome.adhesion, aspectRatio: cell.genome.aspectRatio } })),
+        history: save.world.history.map(sample => {
+          const { averageBranchingTendency: _branching, averageBondPersistence: _persistence, averageColonyElongation: _elongation, averageLinksPerCell: _links, averageLinksPerColony: _colonyLinks, averageForagingExpression: _foraging, averageMotilityExpression: _motility, averageResilienceExpression: _resilience, totalEnergyTransferred: _transferred, differentiatedColonyRatio: _differentiated, ...oldSample } = sample
+          return oldSample
+        }),
+      },
+    } as unknown as SimulationSaveV2
+    const restored = Simulation.fromSave(legacy)
+    expect(restored.world.organisms[0].genome).toMatchObject({ divisionAngle: 0, branching: 0.5, bondPersistence: 1, foraging: 0.5, motility: 0.5, resilience: 0.5 })
+    expect(restored.world.organisms[0]).toMatchObject({ parentId: null, lineageId: restored.world.organisms[0].id, birthTick: 0 })
+    expect(restored.world.history[0]).toMatchObject({ averageBranchingTendency: 0, averageBondPersistence: 0, averageColonyElongation: 0, averageLinksPerCell: 0, averageLinksPerColony: 0, averageForagingExpression: 0, averageMotilityExpression: 0, averageResilienceExpression: 0, totalEnergyTransferred: 0, differentiatedColonyRatio: 0 })
+    const v3 = {
+      ...save,
+      version: 3,
+      world: {
+        ...save.world,
+        organisms: save.world.organisms.map(({ parentId: _parent, lineageId: _lineage, birthTick: _birth, ...cell }) => ({ ...cell, genome: { adhesion: cell.genome.adhesion, aspectRatio: cell.genome.aspectRatio, divisionAngle: cell.genome.divisionAngle, branching: cell.genome.branching, bondPersistence: cell.genome.bondPersistence } })),
+      },
+    } as unknown as SimulationSaveV3
+    const restoredV3 = Simulation.fromSave(v3)
+    expect(restoredV3.world.organisms[0].genome).toMatchObject({ foraging: 0.5, motility: 0.5, resilience: 0.5 })
+    expect(restoredV3.world.organisms[0]).toMatchObject({ parentId: null, lineageId: restoredV3.world.organisms[0].id, birthTick: 0 })
+  })
 })
 
 describe('Camera', () => {
@@ -124,5 +159,16 @@ describe('Camera', () => {
     expect(camera.zoom).toBe(MAX_ZOOM)
     camera.zoomAt(1e-12, { x: 100, y: 100 }, viewport)
     expect(camera.zoom).toBe(MIN_ZOOM)
+  })
+
+  it('follows a moving point without changing zoom and centers it in the viewport', () => {
+    const camera = new Camera()
+    const viewport = { x: 800, y: 600 }
+    camera.zoom = 2.5
+    camera.pan(20, -30)
+    camera.follow({ x: 125, y: 48 })
+    const centered = camera.worldToScreen({ x: 125, y: 48 }, viewport)
+    expect(centered).toEqual({ x: 400, y: 300 })
+    expect(camera.zoom).toBe(2.5)
   })
 })

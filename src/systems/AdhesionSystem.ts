@@ -25,7 +25,9 @@ export class AdhesionSystem {
         ny = dy / distance
       }
       const targetLength = Math.max(link.restLength, supportRadius(a, nx, ny) + supportRadius(b, -nx, -ny) + 0.1)
-      const breakDistance = Math.max(link.breakDistance, targetLength * (1 + link.strength * 0.75))
+      // New links store their inherited persistence directly; retain the actual
+      // saved threshold for legacy links, while never allowing less than rest length.
+      const breakDistance = Math.max(link.breakDistance, targetLength)
       if (distance > breakDistance) { broken += 1; continue }
 
       // Move both cells toward their inherited bond length, preserving cell identity.

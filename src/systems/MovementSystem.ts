@@ -13,7 +13,8 @@ export class MovementSystem {
       organism.direction += (random.next() * 2 - 1) * config.turnRate * deltaTime
       terrain?.constrainOrganism(organism)
       const terrainCost = terrain?.movementCostAt(organism.x, organism.y) ?? 1
-      const effectiveSpeed = organism.speed / (Number.isFinite(terrainCost) ? terrainCost : 1)
+      const motorFactor = config.functionalDifferentiation ? 0.6 + 0.8 * organism.expression.motility : 1
+      const effectiveSpeed = organism.speed * motorFactor / (Number.isFinite(terrainCost) ? terrainCost : 1)
       const nextX = organism.x + Math.cos(organism.direction) * effectiveSpeed * deltaTime
       const nextY = organism.y + Math.sin(organism.direction) * effectiveSpeed * deltaTime
 

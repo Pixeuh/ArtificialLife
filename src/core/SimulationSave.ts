@@ -24,6 +24,8 @@ export interface SimulationSaveV1 {
     readonly totalFoodConsumed: number
     readonly divisions: number
     readonly nextOrganismNumber: number
+    readonly totalEnergyTransferred?: number
+    readonly energyTransferLoss?: number
   }
 }
 
@@ -33,7 +35,19 @@ export interface SimulationSaveV2 extends Omit<SimulationSaveV1, 'version'> {
   readonly resourceRandomState: number
 }
 
-export type SimulationSave = SimulationSaveV1 | SimulationSaveV2
+/** V3 adds inherited modular-growth genes to each saved cell genome. */
+export interface SimulationSaveV3 extends Omit<SimulationSaveV1, 'version'> {
+  readonly version: 3
+  readonly resourceRandomState: number
+}
+
+/** V4 adds expressed-function genes, persistent lineage and transfer counters. */
+export interface SimulationSaveV4 extends Omit<SimulationSaveV1, 'version'> {
+  readonly version: 4
+  readonly resourceRandomState: number
+}
+
+export type SimulationSave = SimulationSaveV1 | SimulationSaveV2 | SimulationSaveV3 | SimulationSaveV4
 
 export interface SavedOrganism {
   readonly id: string
@@ -51,4 +65,7 @@ export interface SavedOrganism {
   readonly age: number
   readonly active: boolean
   readonly foodConsumed: number
+  readonly parentId?: string | null
+  readonly lineageId?: string
+  readonly birthTick?: number
 }

@@ -39,4 +39,9 @@ export class Camera {
     this.zoom = 1
     this.offset = { x: -width * WORLD_SCALE / 2, y: -height * WORLD_SCALE / 2 }
   }
+
+  follow(point: Point): void {
+    const scale = WORLD_SCALE * this.zoom
+    this.offset = { x: -point.x * scale, y: -point.y * scale }
+  }
 }

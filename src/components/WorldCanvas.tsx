@@ -5,9 +5,9 @@ import { WorldRenderer, type CanvasPalette } from '../rendering/WorldRenderer'
 import type { Theme } from '../theme/theme'
 import type { TerrainCell, TerrainSnapshot } from '../environment/terrain/terrainTypes'
 
-interface Props { world: WorldSnapshot; theme: Theme; terrain?: TerrainSnapshot; selectedOrganismId: string | null; onSelectOrganism: (id: string | null) => void; onResetCamera: () => void; onHoverTerrain?: (cell: TerrainCell | null) => void }
+interface Props { world: WorldSnapshot; theme: Theme; terrain?: TerrainSnapshot; selectedOrganismId: string | null; followTargetId: string | null; onStopFollowing: () => void; onSelectOrganism: (id: string | null) => void; onResetCamera: () => void; onHoverTerrain?: (cell: TerrainCell | null) => void }
 
-export function WorldCanvas({ world, theme, terrain, selectedOrganismId, onSelectOrganism, onResetCamera, onHoverTerrain }: Props) {
+export function WorldCanvas({ world, theme, terrain, selectedOrganismId, followTargetId, onStopFollowing, onSelectOrganism, onResetCamera, onHoverTerrain }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const cameraRef = useRef(new Camera())
   const rendererRef = useRef(new WorldRenderer())
@@ -16,11 +16,14 @@ export function WorldCanvas({ world, theme, terrain, selectedOrganismId, onSelec
   const paletteRef = useRef<CanvasPalette>(WorldRenderer.defaultPalette)
   const terrainRef = useRef(terrain)
   const hoverRef = useRef(onHoverTerrain)
+  const followRef = useRef(followTargetId)
+  const stopFollowRef = useRef(onStopFollowing)
 
   useEffect(() => { worldRef.current = world }, [world])
   useEffect(() => { selectedRef.current = selectedOrganismId }, [selectedOrganismId])
   useEffect(() => { terrainRef.current = terrain; rendererRef.current.setTerrain(terrain, paletteRef.current) }, [terrain])
   useEffect(() => { hoverRef.current = onHoverTerrain }, [onHoverTerrain])
+  useEffect(() => { followRef.current = followTargetId; stopFollowRef.current = onStopFollowing }, [followTargetId, onStopFollowing])
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -48,7 +51,13 @@ export function WorldCanvas({ world, theme, terrain, selectedOrganismId, onSelec
     resize()
     const draw = (): void => {
       const bounds = canvas.getBoundingClientRect()
-      rendererRef.current.draw(context, bounds.width, bounds.height, worldRef.current, cameraRef.current, selectedRef.current, paletteRef.current)
+      const targetId = followRef.current
+      if (targetId) {
+        const target = worldRef.current.organisms.find(organism => organism.id === targetId)
+        if (target) cameraRef.current.follow(target)
+        else stopFollowRef.current()
+      }
+      rendererRef.current.draw(context, bounds.width, bounds.height, worldRef.current, cameraRef.current, selectedRef.current, paletteRef.current, performance.now())
       frame = requestAnimationFrame(draw)
     }
     frame = requestAnimationFrame(draw)
@@ -70,6 +79,7 @@ export function WorldCanvas({ world, theme, terrain, selectedOrganismId, onSelec
         const dx = event.clientX - dragRef.current.x
         const dy = event.clientY - dragRef.current.y
         if (Math.abs(dx) + Math.abs(dy) > 2) dragRef.current.moved = true
+        stopFollowRef.current()
         cameraRef.current.pan(dx, dy)
         dragRef.current.x = event.clientX
         dragRef.current.y = event.clientY
@@ -110,6 +120,7 @@ export function WorldCanvas({ world, theme, terrain, selectedOrganismId, onSelec
     onPointerLeave={() => hoverRef.current?.(null)}
     onWheel={(event) => {
       event.preventDefault()
+      stopFollowRef.current()
       const bounds = event.currentTarget.getBoundingClientRect()
       cameraRef.current.zoomAt(event.deltaY < 0 ? 1.12 : 1 / 1.12, { x: event.clientX - bounds.left, y: event.clientY - bounds.top }, { x: bounds.width, y: bounds.height })
     }}

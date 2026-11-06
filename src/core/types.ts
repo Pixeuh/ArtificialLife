@@ -18,6 +18,8 @@ export interface WorldConfig {
   readonly mutationRate: number
   readonly mutationStep: number
   readonly adhesionEnergyCost: number
+  readonly functionalDifferentiation: boolean
+  readonly energyTransferEnabled: boolean
   readonly maximumPopulation: number
   readonly turnRate: number
 }
@@ -27,6 +29,36 @@ export interface CellGenome {
   readonly adhesion: number
   /** Heritable body aspect ratio, in [0.5, 2]. */
   readonly aspectRatio: number
+  /** Preferred daughter-placement axis relative to cell heading, in [-π, π]. */
+  readonly divisionAngle?: number
+  /** Probability and spread of angled divisions, in [0, 1]. */
+  readonly branching?: number
+  /** Bond stress tolerance and maintenance multiplier, in [0.5, 2]. */
+  readonly bondPersistence?: number
+  /** Heritable investment in nutrient acquisition, in [0, 1]. */
+  readonly foraging?: number
+  /** Heritable investment in motility, in [0, 1]. */
+  readonly motility?: number
+  /** Heritable investment in structural strength, in [0, 1]. */
+  readonly resilience?: number
+}
+
+/** New simulations and loaded legacy cells use a complete, normalized genome. */
+export interface NormalizedCellGenome extends CellGenome {
+  readonly divisionAngle: number
+  readonly branching: number
+  readonly bondPersistence: number
+  readonly foraging: number
+  readonly motility: number
+  readonly resilience: number
+}
+
+export interface CellExpression {
+  readonly foraging: number
+  readonly motility: number
+  readonly resilience: number
+  readonly localResourceSignal: number
+  readonly colonyEdgeSignal: number
 }
 
 export interface CellLinkSnapshot {
@@ -53,9 +85,13 @@ export interface OrganismSnapshot {
   readonly active: boolean
   readonly foodConsumed: number
   readonly generation: number
-  readonly genome: CellGenome
+  readonly genome: NormalizedCellGenome
   readonly colonyId: string
   readonly colonySize: number
+  readonly expression: CellExpression
+  readonly parentId: string | null
+  readonly lineageId: string
+  readonly birthTick: number
 }
 
 export interface FoodSnapshot {
@@ -82,9 +118,22 @@ export interface WorldStatistics {
   readonly largestColonySize: number
   readonly averageAdhesion: number
   readonly averageElongation: number
+  readonly averageBranchingTendency: number
+  readonly averageBondPersistence: number
+  readonly averageColonyElongation: number
+  readonly averageLinksPerCell: number
+  readonly averageLinksPerColony: number
   readonly maxGeneration: number
   readonly birthRate: number
   readonly mortalityRate: number
+  readonly averageForagingExpression: number
+  readonly averageMotilityExpression: number
+  readonly averageResilienceExpression: number
+  readonly averageEnergyHighForaging: number
+  readonly averageEnergyLowForaging: number
+  readonly differentiatedColonyRatio: number
+  readonly totalEnergyTransferred: number
+  readonly energyTransferLoss: number
 }
 
 export interface EvolutionSample {
@@ -96,9 +145,19 @@ export interface EvolutionSample {
   readonly largestColonySize: number
   readonly averageAdhesion: number
   readonly averageElongation: number
+  readonly averageBranchingTendency: number
+  readonly averageBondPersistence: number
+  readonly averageColonyElongation: number
+  readonly averageLinksPerCell: number
+  readonly averageLinksPerColony: number
   readonly maxGeneration: number
   readonly birthRate: number
   readonly mortalityRate: number
+  readonly averageForagingExpression: number
+  readonly averageMotilityExpression: number
+  readonly averageResilienceExpression: number
+  readonly totalEnergyTransferred: number
+  readonly differentiatedColonyRatio: number
 }
 
 export interface WorldDefinition {
@@ -109,6 +168,9 @@ export interface WorldDefinition {
   readonly seed: number
   readonly originType?: 'primordial' | 'custom'
   readonly interventionMode?: 'observation' | 'divine'
+  readonly scenario?: 'colony-growth' | 'differentiation-treatment' | 'differentiation-control'
+  /** Optional deterministic founder genotypes used to define experimental initial conditions. */
+  readonly initialGenomes?: readonly CellGenome[]
   readonly config?: Partial<WorldConfig>
   readonly terrainConfig?: Partial<TerrainGenerationConfig>
 }
@@ -153,6 +215,8 @@ export const WORLD_DEFAULTS: WorldConfig = {
   mutationRate: 0.03,
   mutationStep: 0.12,
   adhesionEnergyCost: 0.01,
+  functionalDifferentiation: true,
+  energyTransferEnabled: true,
   maximumPopulation: 2_000,
   turnRate: 0.65,
 }

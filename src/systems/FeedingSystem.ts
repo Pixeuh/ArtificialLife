@@ -8,7 +8,7 @@ export interface FeedingMetrics { candidateChecks: number; blockerChecks: number
 
 /** Organisms are processed by stable array order; the first touching organism claims each food item. */
 export class FeedingSystem {
-  static update(organisms: Organism[], resources: FoodResource[], config: WorldConfig, metrics?: FeedingMetrics): number {
+  static update(organisms: Organism[], resources: FoodResource[], config: WorldConfig, metrics?: FeedingMetrics, functionalDifferentiation = true): number {
     if (metrics) { metrics.candidateChecks = 0; metrics.blockerChecks = 0 }
     let maxExtent = 1
     for (const organism of organisms) {
@@ -32,7 +32,8 @@ export class FeedingSystem {
         const dx = organism.x - resource.x
         const dy = organism.y - resource.y
         const distance = Math.hypot(dx, dy)
-        const reach = resource.radius + (distance < Number.EPSILON ? organism.radius : supportRadius(organism, dx / distance, dy / distance))
+        const bodyReach = distance < Number.EPSILON ? organism.radius : supportRadius(organism, dx / distance, dy / distance)
+        const reach = resource.radius + bodyReach * (functionalDifferentiation ? 0.8 + 0.4 * organism.expression.foraging : 1)
         if (dx * dx + dy * dy <= reach * reach) {
           if (!hasNutrientAccess(organism, resource.x, resource.y, organisms, candidates, metrics)) continue
           organism.energy = Math.min(organism.maxEnergy, config.maxEnergy, finiteEnergy(organism.energy) + finiteEnergy(resource.energy))

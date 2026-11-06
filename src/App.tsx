@@ -12,10 +12,17 @@ import { TERRAIN_DEFAULTS } from './environment/terrain/terrainTypes'
 import type { TerrainCell, TerrainSnapshot } from './environment/terrain/terrainTypes'
 import { TerrainSettings, type TerrainDraft } from './components/TerrainSettings'
 import { TerrainLegend } from './components/TerrainLegend'
+import { createColonyGrowthExperiment } from './experiments/colonyGrowth'
+import { createDifferentiationExperiment } from './experiments/differentiation'
+import { APP_VERSION } from './version'
 
+const differentiationPair = createDifferentiationExperiment()
 const definitions: WorldDefinition[] = [
   { id: 'world-a', name: 'Monde A', width: 4_000, height: 2_500, seed: 381_047_21, originType: 'primordial', interventionMode: 'observation', config: { initialOrganismCount: 50, initialFoodCount: 250, maxFoodCount: 350 } },
   { id: 'world-b', name: 'Monde B', width: 4_000, height: 2_500, seed: 927_163_04, originType: 'primordial', interventionMode: 'divine', config: { initialOrganismCount: 40, initialFoodCount: 180, maxFoodCount: 300 } },
+  createColonyGrowthExperiment(),
+  differentiationPair.treatment,
+  differentiationPair.control,
 ]
 
 type WorldSettings = { organisms: number; foods: number; foodEnergy: number; foodRegenerationRate: number; baseMetabolismRate: number; movementEnergyCost: number; divisionEnergyThreshold: number; mutationRate: number; mutationStep: number; adhesionEnergyCost: number; maximumPopulation: number }
@@ -44,10 +51,11 @@ export default function App() {
     resources: [],
     links: [],
     history: [],
-    statistics: { population: 0, resources: 0, totalFoodConsumed: 0, averageEnergy: 0, averageAge: 0, initialPopulation: 0, totalDeaths: 0, starvationDeaths: 0, divisions: 0, colonies: 0, isolatedCells: 0, averageColonySize: 0, largestColonySize: 0, averageAdhesion: 0, averageElongation: 0, maxGeneration: 0, birthRate: 0, mortalityRate: 0 },
+    statistics: { population: 0, resources: 0, totalFoodConsumed: 0, averageEnergy: 0, averageAge: 0, initialPopulation: 0, totalDeaths: 0, starvationDeaths: 0, divisions: 0, colonies: 0, isolatedCells: 0, averageColonySize: 0, largestColonySize: 0, averageAdhesion: 0, averageElongation: 0, averageBranchingTendency: 0, averageBondPersistence: 0, averageColonyElongation: 0, averageLinksPerCell: 0, averageLinksPerColony: 0, maxGeneration: 0, birthRate: 0, mortalityRate: 0, averageForagingExpression: 0, averageMotilityExpression: 0, averageResilienceExpression: 0, averageEnergyHighForaging: 0, averageEnergyLowForaging: 0, differentiatedColonyRatio: 0, totalEnergyTransferred: 0, energyTransferLoss: 0 },
   })))
   const [selectedId, setSelectedId] = useState(definitions[0].id)
   const [selectedOrganismId, setSelectedOrganismId] = useState<string | null>(null)
+  const [followTargetId, setFollowTargetId] = useState<string | null>(null)
   const [draftCounts, setDraftCounts] = useState<Record<string, WorldSettings>>(() => Object.fromEntries(definitions.map(definition => [definition.id, {
     organisms: definition.config?.initialOrganismCount ?? WORLD_DEFAULTS.initialOrganismCount,
     foods: definition.config?.initialFoodCount ?? WORLD_DEFAULTS.initialFoodCount,
@@ -71,6 +79,7 @@ export default function App() {
   useEffect(() => {
     if (!selectedOrganismId || selected.statistics.initialPopulation === 0 || selected.organisms.some(item => item.id === selectedOrganismId)) return
     setSelectedOrganismId(null)
+    setFollowTargetId(null)
     setDeathNotice(true)
     const timer = window.setTimeout(() => setDeathNotice(false), 3_000)
     return () => window.clearTimeout(timer)
@@ -100,7 +109,13 @@ export default function App() {
   const selectWorld = (id: string): void => {
     setSelectedId(id)
     setSelectedOrganismId(null)
+    setFollowTargetId(null)
     setHoveredTerrain(null)
+  }
+
+  const selectOrganism = (id: string | null): void => {
+    setSelectedOrganismId(id)
+    if (id !== followTargetId) setFollowTargetId(null)
   }
 
   const command = (type: 'start' | 'pause' | 'replay' | 'new-world' | 'set-speed', speed?: number): void => {
@@ -110,6 +125,7 @@ export default function App() {
     else if (type === 'replay') {
       message = { type: 'reset', world: worldDefinitions[index] }
       setSelectedOrganismId(null)
+      setFollowTargetId(null)
       setHoveredTerrain(null)
       setDeathNotice(false)
     } else if (type === 'new-world') {
@@ -138,6 +154,7 @@ export default function App() {
       setTerrainDrafts(current => ({ ...current, [selectedId]: { ...terrainDraft, seed, customSeed: false } }))
       message = { type: 'reset', world: updatedDefinition }
       setSelectedOrganismId(null)
+      setFollowTargetId(null)
       setHoveredTerrain(null)
       setDeathNotice(false)
     } else message = { type }
@@ -178,7 +195,7 @@ export default function App() {
 
   return <main className="app-shell">
     <header className="topbar">
-      <a className="brand" href="#" aria-label="Artificial Life accueil"><span className="brand-mark"><i /><i /><i /><i /></span><span>ARTIFICIAL<span className="brand-light"> LIFE</span></span><span className="version">0.6</span></a>
+      <a className="brand" href="#" aria-label="Artificial Life accueil"><span className="brand-mark"><i /><i /><i /><i /></span><span>ARTIFICIAL<span className="brand-light"> LIFE</span></span><span className="version">{APP_VERSION}</span></a>
       <div className="header-divider" />
       <WorldTabs worlds={worlds} selectedId={selectedId} onSelect={selectWorld} />
       <div className="header-right"><span className="system-label"><span className="live-dot" />SYSTÈME OPÉRATIONNEL</span><button className="theme-toggle" onClick={toggleTheme} title={theme === 'dark' ? 'Activer le thème clair' : 'Activer le thème sombre'} aria-label={theme === 'dark' ? 'Activer le thème clair' : 'Activer le thème sombre'} aria-pressed={theme === 'light'}>
@@ -188,13 +205,13 @@ export default function App() {
     {showSettings && <div className="settings-popover"><div className="section-kicker">ÉCOSYSTÈME · {selected.name.toUpperCase()}</div><label>Population initiale<input type="number" min="0" max="2000" value={draftCounts[selectedId].organisms} onChange={event => updateWorldSetting('organisms', Number(event.target.value))} /></label><label>Population maximale<input type="number" min="0" max="10000" step="1" value={draftCounts[selectedId].maximumPopulation} onChange={event => updateWorldSetting('maximumPopulation', Number(event.target.value))} /></label><label>Ressources initiales<input type="number" min="0" max="2000" value={draftCounts[selectedId].foods} onChange={event => updateWorldSetting('foods', Number(event.target.value))} /></label><label>Énergie par ressource<input type="number" min="0" step="1" value={draftCounts[selectedId].foodEnergy} onChange={event => updateWorldSetting('foodEnergy', Number(event.target.value))} /></label><label>Régénération ressources/s<input type="number" min="0" step="0.1" value={draftCounts[selectedId].foodRegenerationRate} onChange={event => updateWorldSetting('foodRegenerationRate', Number(event.target.value))} /></label><label>Métabolisme (énergie/s)<input type="number" min="0" step="0.01" value={draftCounts[selectedId].baseMetabolismRate} onChange={event => updateWorldSetting('baseMetabolismRate', Number(event.target.value))} /></label><label>Coût mouvement (énergie/u)<input type="number" min="0" step="0.0001" value={draftCounts[selectedId].movementEnergyCost} onChange={event => updateWorldSetting('movementEnergyCost', Number(event.target.value))} /></label><label>Seuil de division<input type="number" min="0" step="1" value={draftCounts[selectedId].divisionEnergyThreshold} onChange={event => updateWorldSetting('divisionEnergyThreshold', Number(event.target.value))} /></label><label>Mutation par division (%)<input type="number" min="0" max="100" step="1" value={draftCounts[selectedId].mutationRate * 100} onChange={event => updateWorldSetting('mutationRate', Number(event.target.value) / 100)} /></label><label>Amplitude mutation<input type="number" min="0" max="1" step="0.01" value={draftCounts[selectedId].mutationStep} onChange={event => updateWorldSetting('mutationStep', Number(event.target.value))} /></label><label>Coût adhésion (énergie/s/lien)<input type="number" min="0" step="0.001" value={draftCounts[selectedId].adhesionEnergyCost} onChange={event => updateWorldSetting('adhesionEnergyCost', Number(event.target.value))} /></label><p>Réglages appliqués à la réinitialisation.</p><p>Pas fixe : <strong>33,3 ms · worker indépendant</strong></p><TerrainSettings value={terrainDrafts[selectedId]} onChange={updateTerrainSetting} onRandomSeed={randomizeTerrainSeed} /></div>}
     <section className="workspace">
       <div className="canvas-column">
-        <div className="canvas-toolbar"><div><span className="breadcrumb">ESPACE DE SIMULATION</span><span className="breadcrumb-separator">/</span><span className="current-world">{selected.name}</span></div><button className="center-button" onClick={() => setCameraResetKey(value => value + 1)}><span>⌖</span> Recentrer</button></div>
-        <div className="canvas-frame"><WorldCanvas key={`${selected.id}-${cameraResetKey}`} world={selected} terrain={terrains[selected.id]} theme={theme} selectedOrganismId={selectedOrganismId} onSelectOrganism={setSelectedOrganismId} onResetCamera={() => setCameraResetKey(value => value + 1)} onHoverTerrain={setHoveredTerrain} /><TerrainLegend /><div className="canvas-corner top-left" /><div className="canvas-corner top-right" /><div className="canvas-corner bottom-left" /><div className="canvas-corner bottom-right" /><div className="canvas-coordinates">PLAN XY <span>·</span> UNITÉS DE MONDE</div><div className="canvas-grid-icon">＋</div></div>
+        <div className="canvas-toolbar"><div><span className="breadcrumb">ESPACE DE SIMULATION</span><span className="breadcrumb-separator">/</span><span className="current-world">{selected.name}</span></div><div className="canvas-actions">{selectedOrganismId && <button className={`center-button ${followTargetId === selectedOrganismId ? 'selected' : ''}`} onClick={() => setFollowTargetId(current => current === selectedOrganismId ? null : selectedOrganismId)}><span>◎</span>{followTargetId === selectedOrganismId ? 'Arrêter le suivi' : 'Suivre'}</button>}<button className="center-button" onClick={() => { setFollowTargetId(null); setCameraResetKey(value => value + 1) }}><span>⌖</span> Recentrer</button></div></div>
+        <div className="canvas-frame"><WorldCanvas key={`${selected.id}-${cameraResetKey}`} world={selected} terrain={terrains[selected.id]} theme={theme} selectedOrganismId={selectedOrganismId} followTargetId={followTargetId} onStopFollowing={() => setFollowTargetId(null)} onSelectOrganism={selectOrganism} onResetCamera={() => { setFollowTargetId(null); setCameraResetKey(value => value + 1) }} onHoverTerrain={setHoveredTerrain} /><TerrainLegend /><div className="canvas-corner top-left" /><div className="canvas-corner top-right" /><div className="canvas-corner bottom-left" /><div className="canvas-corner bottom-right" /><div className="canvas-coordinates">PLAN XY <span>·</span> UNITÉS DE MONDE</div><div className="canvas-grid-icon">＋</div></div>
         <SimulationControls world={selected} onCommand={command} />
         <div className="workspace-foot"><span>GLISSER POUR DÉPLACER <b>·</b> MOLETTE POUR ZOOMER <b>·</b> DOUBLE-CLIC POUR RECENTRER</span><span>RENDER 2D <i>●</i></span></div>
       </div>
-      <WorldInfo world={selected} selectedOrganismId={selectedOrganismId} deathNotice={deathNotice} loading={!readyWorlds[selected.id]} hoveredTerrain={hoveredTerrain} />
+      <WorldInfo world={selected} selectedOrganismId={selectedOrganismId} onSelectOrganism={selectOrganism} deathNotice={deathNotice} loading={!readyWorlds[selected.id]} hoveredTerrain={hoveredTerrain} />
     </section>
-    <footer className="app-footer"><span>ARTIFICIAL LIFE <span className="footer-sep">/</span> LABORATOIRE DE VIE ARTIFICIELLE</span><span>ENVIRONNEMENT DE SIMULATION <span className="footer-sep">·</span> V.0.6</span></footer>
+    <footer className="app-footer"><span>ARTIFICIAL LIFE <span className="footer-sep">/</span> LABORATOIRE DE VIE ARTIFICIELLE</span><span>ENVIRONNEMENT DE SIMULATION <span className="footer-sep">·</span> V.{APP_VERSION}</span></footer>
   </main>
 }

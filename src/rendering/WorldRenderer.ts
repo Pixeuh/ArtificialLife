@@ -16,6 +16,9 @@ export interface CanvasPalette {
   direction: string
   selection: string
   food: string
+  foraging: string
+  motility: string
+  resilience: string
   terrain: TerrainColors
 }
 
@@ -23,9 +26,10 @@ export type TerrainColors = Record<'plains' | 'forest' | 'desert' | 'mountain' |
 
 export class WorldRenderer {
   private readonly terrainRenderer = new TerrainRenderer()
+  private terrain?: TerrainSnapshot
   static readonly defaultPalette: CanvasPalette = {
     background: '#080c10', grid: '#182329', boundary: '#3b5960', origin: '#69e4c2', label: '#667b80',
-    organism: '#75dced', organismLow: '#e8c66c', organismCritical: '#ed826f', organismStroke: '#c0f7ff', direction: '#c0f7ff', selection: '#a5f1df', food: '#8be878',
+    organism: '#75dced', organismLow: '#e8c66c', organismCritical: '#ed826f', organismStroke: '#c0f7ff', direction: '#c0f7ff', selection: '#a5f1df', food: '#8be878', foraging: '#b9e66a', motility: '#6fbfff', resilience: '#dc9af0',
     terrain: { plains: '#536c48', forest: '#294d37', desert: '#8c7950', mountain: '#68716e', water: '#26566c' },
   }
 
@@ -44,6 +48,9 @@ export class WorldRenderer {
       direction: readVariable('--canvas-direction') || defaults.direction,
       selection: readVariable('--canvas-selection') || defaults.selection,
       food: readVariable('--canvas-food') || defaults.food,
+      foraging: readVariable('--canvas-foraging') || defaults.foraging,
+      motility: readVariable('--canvas-motility') || defaults.motility,
+      resilience: readVariable('--canvas-resilience') || defaults.resilience,
       terrain: {
         plains: readVariable('--terrain-plains') || defaults.terrain.plains,
         forest: readVariable('--terrain-forest') || defaults.terrain.forest,
@@ -55,16 +62,16 @@ export class WorldRenderer {
   }
 
   setTerrain(terrain: TerrainSnapshot | undefined, palette: CanvasPalette): void {
+    this.terrain = terrain
     this.terrainRenderer.setTerrain(terrain, palette.terrain)
   }
 
-  draw(context: CanvasRenderingContext2D, width: number, height: number, world: WorldSnapshot, camera: Camera, selectedOrganismId: string | null = null, palette: CanvasPalette = WorldRenderer.defaultPalette): void {
+  draw(context: CanvasRenderingContext2D, width: number, height: number, world: WorldSnapshot, camera: Camera, selectedOrganismId: string | null = null, palette: CanvasPalette = WorldRenderer.defaultPalette, presentationTime = 0): void {
     const { zoom } = camera
     context.fillStyle = palette.background
     context.fillRect(0, 0, width, height)
     const terrainOrigin = camera.worldToScreen({ x: 0, y: 0 }, { x: width, y: height })
-    this.terrainRenderer.draw(context, terrainOrigin.x, terrainOrigin.y, world.width * WORLD_SCALE * zoom, world.height * WORLD_SCALE * zoom)
-    this.drawGrid(context, width, height, camera, palette)
+    this.terrainRenderer.draw(context, terrainOrigin.x, terrainOrigin.y, WORLD_SCALE * zoom, this.terrain, presentationTime, width, height)
 
     const origin = camera.worldToScreen({ x: 0, y: 0 }, { x: width, y: height })
     const edge = camera.worldToScreen({ x: world.width, y: world.height }, { x: width, y: height })
@@ -93,25 +100,36 @@ export class WorldRenderer {
       const end = camera.worldToScreen(b, viewport)
       const highlighted = selectedColonyId !== undefined && a.colonyId === selectedColonyId
       context.strokeStyle = highlighted ? palette.selection : palette.boundary
-      context.lineWidth = highlighted ? 2 : 1.2
+      context.lineWidth = highlighted ? 2.4 : 0.8 + link.strength * 0.8
       context.beginPath()
       context.moveTo(start.x, start.y)
       context.lineTo(end.x, end.y)
       context.stroke()
     }
 
-    for (const resource of world.resources) {
+    for (const resource of [...world.resources].sort((a, b) => a.y - b.y)) {
       const point = camera.worldToScreen(resource, viewport)
-      const radius = Math.max(1.5, resource.radius * WORLD_SCALE * zoom)
+      const radius = Math.max(2, resource.radius * WORLD_SCALE * zoom)
+      context.save()
+      context.globalAlpha = 0.2
+      context.fillStyle = '#101713'
+      context.beginPath(); context.arc(point.x + radius * 0.25, point.y + radius * 0.35, radius * 1.1, 0, Math.PI * 2); context.fill()
+      context.restore()
       context.fillStyle = palette.food
       context.beginPath()
       context.arc(point.x, point.y, radius, 0, Math.PI * 2)
       context.fill()
+      context.fillStyle = '#ffffff'
+      context.globalAlpha = 0.32
+      context.beginPath(); context.arc(point.x - radius * 0.28, point.y - radius * 0.3, Math.max(0.7, radius * 0.28), 0, Math.PI * 2); context.fill()
+      context.globalAlpha = 1
     }
 
-    for (const organism of world.organisms) {
+    const farView = zoom < 0.42
+    const closeView = zoom > 1.65
+    for (const organism of [...world.organisms].sort((a, b) => a.y - b.y)) {
       const point = camera.worldToScreen(organism, viewport)
-      const radius = Math.max(2, organism.radius * WORLD_SCALE * zoom)
+      const radius = Math.max(farView ? 2.1 : 2.8, organism.radius * WORLD_SCALE * zoom)
       const isSelected = organism.id === selectedOrganismId
       const isInSelectedColony = selectedColonyId !== undefined && organism.colonyId === selectedColonyId
       const energyRatio = organism.energy / Math.max(organism.maxEnergy, Number.EPSILON)
@@ -120,6 +138,10 @@ export class WorldRenderer {
       const radiusX = radius * Math.sqrt(aspect)
       const radiusY = radius / Math.sqrt(aspect)
       context.save()
+      context.globalAlpha = 0.25
+      context.fillStyle = '#101713'
+      context.beginPath(); context.arc(point.x + Math.max(radiusX, radiusY) * 0.18, point.y + Math.max(radiusX, radiusY) * 0.34, Math.max(radiusX, radiusY) * 0.95, 0, Math.PI * 2); context.fill()
+      context.globalAlpha = 1
       context.translate(point.x, point.y)
       context.rotate(organism.direction)
       context.beginPath()
@@ -130,10 +152,17 @@ export class WorldRenderer {
       context.beginPath()
       context.ellipse(0, 0, radiusX, radiusY, 0, 0, Math.PI * 2)
       context.stroke()
-      context.globalAlpha = 0.55
-      context.beginPath()
-      context.ellipse(0, 0, radiusX * 0.78, radiusY * 0.78, 0, 0, Math.PI * 2)
-      context.stroke()
+      if (closeView) {
+        context.globalAlpha = 0.42
+        context.fillStyle = '#ffffff'
+        context.beginPath(); context.ellipse(-radiusX * 0.22, -radiusY * 0.22, radiusX * 0.28, radiusY * 0.2, 0, 0, Math.PI * 2); context.fill()
+        context.globalAlpha = 0.55
+        context.strokeStyle = palette.organismStroke
+        context.beginPath(); context.moveTo(radiusX * 0.25, 0); context.lineTo(radiusX * 0.78, 0); context.stroke()
+      } else if (!farView) {
+        context.globalAlpha = 0.42
+        context.beginPath(); context.ellipse(0, 0, radiusX * 0.78, radiusY * 0.78, 0, 0, Math.PI * 2); context.stroke()
+      }
       context.restore()
       context.beginPath()
       context.moveTo(point.x, point.y)
@@ -147,7 +176,26 @@ export class WorldRenderer {
         context.arc(point.x, point.y, Math.max(radiusX, radiusY) + (isSelected ? 4 : 2), 0, Math.PI * 2)
         context.stroke()
       }
+      if (closeView && world.config.functionalDifferentiation) {
+        const markers = [
+          { value: organism.expression.foraging, color: palette.foraging, radius: Math.max(radiusX, radiusY) + 2 },
+          { value: organism.expression.motility, color: palette.motility, radius: Math.max(radiusX, radiusY) + 4 },
+          { value: organism.expression.resilience, color: palette.resilience, radius: Math.max(radiusX, radiusY) + 6 },
+        ]
+        for (const marker of markers) {
+          context.globalAlpha = 0.28 + marker.value * 0.72
+          context.strokeStyle = marker.color
+          context.lineWidth = 1.7
+          context.beginPath()
+          context.arc(point.x, point.y, marker.radius, -Math.PI / 2, -Math.PI / 2 + marker.value * Math.PI * 1.7)
+          context.stroke()
+        }
+        context.globalAlpha = 1
+      }
       if (isSelected) {
+        context.strokeStyle = palette.selection
+        context.lineWidth = 1.5
+        context.beginPath(); context.arc(point.x, point.y, Math.max(radiusX, radiusY) + 5, 0, Math.PI * 2); context.stroke()
         context.fillStyle = palette.selection
         context.font = '10px ui-monospace, monospace'
         context.fillText(organism.id, point.x + Math.max(radiusX, radiusY) + 7, point.y - Math.max(radiusX, radiusY) - 4)
@@ -162,19 +210,6 @@ export class WorldRenderer {
     context.fillText(`${zoom.toFixed(2)}×`, 16, height - 18)
   }
 
-  private drawGrid(context: CanvasRenderingContext2D, width: number, height: number, camera: Camera, palette: CanvasPalette): void {
-    const spacing = 100 * WORLD_SCALE * camera.zoom
-    if (spacing < 14) return
-    const center = camera.worldToScreen({ x: 0, y: 0 }, { x: width, y: height })
-    const startX = ((center.x % spacing) + spacing) % spacing
-    const startY = ((center.y % spacing) + spacing) % spacing
-    context.strokeStyle = palette.grid
-    context.lineWidth = 1
-    context.beginPath()
-    for (let x = startX; x < width; x += spacing) { context.moveTo(x, 0); context.lineTo(x, height) }
-    for (let y = startY; y < height; y += spacing) { context.moveTo(0, y); context.lineTo(width, y) }
-    context.stroke()
-  }
 }
 
 export type { Point }
